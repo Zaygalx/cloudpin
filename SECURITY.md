@@ -15,6 +15,8 @@ Examples of what counts as a security problem here:
 
 ## What cloudpin does with your accounts
 
+What cloudpin protects against, what it trusts and what is out of scope: [THREAT_MODEL.md](THREAT_MODEL.md).
+
 - It runs each CLI's own identity command (`az account show`, `aws sts get-caller-identity`, `gcloud config list`,
   `vercel teams ls`, `gh api user`, `supabase projects list`, `wrangler whoami --json`) with the same flags and
   environment as your command, and reads the result. For Kubernetes, Supabase and Wrangler it also reads project
