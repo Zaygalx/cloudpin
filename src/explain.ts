@@ -40,6 +40,7 @@ const AGENT_LABELS: Record<AgentName, string> = {
   codex: "Codex",
   copilot: "Copilot CLI",
   gemini: "Gemini CLI",
+  antigravity: "Antigravity",
   cursor: "Cursor",
 };
 

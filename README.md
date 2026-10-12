@@ -50,7 +50,7 @@ for a guarded CLI, and a `.cloudpin.yml` written for a newer cloudpin now says t
 ```sh
 cd your-project
 cloudpin init                        # pin the accounts you are logged into now
-cloudpin install-hook claude         # protect your AI agent (or codex, cursor, gemini, copilot)
+cloudpin install-hook claude         # protect your AI agent (or codex, cursor, copilot, antigravity, gemini)
 echo 'eval "$(cloudpin shell-init bash)"' >> ~/.bashrc   # protect your terminal
 ```
 
@@ -208,8 +208,8 @@ status` and every message say which environment applies and why.
 
 - In a terminal: `Continue? [y/N]`.
 - Without a terminal (CI, scripts): the command stops unless `CLOUDPIN_CONFIRM=<name>` is set.
-- Claude Code, Copilot CLI and Cursor ask you through the agent's own prompt. Codex and Gemini CLI have no working
-  "ask" in their hooks, so the command is blocked and the agent is told to hand it to you.
+- Claude Code, Copilot CLI, Antigravity and Cursor ask you through the agent's own prompt. Codex and Gemini CLI have
+  no working "ask" in their hooks, so the command is blocked and the agent is told to hand it to you.
 
 The built-in read-only list is short on purpose (`az ... list|show`, `aws <service> describe-*|list-*|get-*` and
 `s3 ls`, `gcloud ... list|describe`, `vercel ls|inspect|logs` and `<group> ls`, `gh <group> list|view|status`,
@@ -258,8 +258,12 @@ environment by setting `CLOUDPIN_ENV` in their own command, and need your OK to 
 | Claude Code | `.claude/settings.json` | Tested inside the agent |
 | Codex | `.codex/hooks.json` | Tested inside the agent |
 | Cursor | `.cursor/hooks.json` | Built to the documented hook format |
+| GitHub Copilot CLI | `.github/hooks/cloudpin.json` | Tested inside the agent |
+| Antigravity (CLI, IDE and 2.0) | `.agents/hooks.json` | Tested inside Antigravity CLI |
 | Gemini CLI | `.gemini/settings.json` | Built to the documented hook format |
-| GitHub Copilot CLI | `.github/hooks/cloudpin.json` | Built to the documented hook format |
+
+Google replaced Gemini CLI with Antigravity CLI for free and consumer accounts on 2026-06-18; Gemini CLI still
+serves paid API keys and enterprise licenses, so both are supported.
 
 cloudpin reads the whole command line the agent is about to run, so it also catches
 `cd ../other && npx vercel deploy`, `bash -c "..."`, pipelines, `$( )`, `xargs`, `find -exec`, heredocs fed to a shell

@@ -37,6 +37,17 @@ const inputs = {
       tool_input: { command, ...(dir ? { dir_path: dir } : {}) },
     }),
   cursor: (command: string) => JSON.stringify({ command, cwd: "/repo", sandbox: false }),
+  // antigravity.google/docs/hooks, PreToolUse example (camelCase, toolCall.args).
+  antigravity: (command: string, cwd: string | undefined = "/repo") =>
+    JSON.stringify({
+      toolCall: { name: "run_command", args: { CommandLine: command, ...(cwd ? { Cwd: cwd } : {}), WaitMsBeforeAsync: 5000 } },
+      stepIdx: 19,
+      conversationId: "ec33ebf9-0cba-4100-8142-c61503f6c587",
+      workspacePaths: ["/repo"],
+      transcriptPath: "~/.gemini/antigravity-cli/brain/x/.system_generated/logs/transcript.jsonl",
+      artifactDirectoryPath: "~/.gemini/antigravity-cli/brain/x",
+      modelName: "gemini-3.6-flash-medium",
+    }),
 };
 
 describe("runHook: codex (same protocol as Claude Code)", () => {
@@ -77,6 +88,34 @@ describe("runHook: gemini", () => {
   it("ignores other tools", async () => {
     const input = JSON.stringify({ cwd: "/repo", tool_name: "write_file", tool_input: { content: "gh" } });
     expect(await runHook(AGENTS.gemini, input, deps, wrong)).toBe("");
+  });
+});
+
+describe("runHook: antigravity (#80)", () => {
+  const sendInput = (Input: string) =>
+    JSON.stringify({ toolCall: { name: "manage_task", args: { Action: "send_input", TaskId: "t1", Input } }, workspacePaths: ["/repo"] });
+
+  it("denies run_command with decision and reason", async () => {
+    const out = JSON.parse(await runHook(AGENTS.antigravity, inputs.antigravity("gh pr list"), deps, wrong));
+    expect(out.decision).toBe("deny");
+    expect(out.reason).toContain("blocked `gh pr list`");
+  });
+  it("answers ask, never allow, when there is no problem: allow would skip Antigravity's own approval", async () => {
+    expect(JSON.parse(await runHook(AGENTS.antigravity, inputs.antigravity("gh pr list"), deps, {}))).toEqual({ decision: "ask" });
+  });
+  it("checks against Cwd, and falls back to the first workspace path without one", async () => {
+    expect(JSON.parse(await runHook(AGENTS.antigravity, inputs.antigravity("gh pr list", "/elsewhere"), deps, wrong)).decision).toBe("ask");
+    expect(JSON.parse(await runHook(AGENTS.antigravity, inputs.antigravity("gh pr list", undefined), deps, wrong)).decision).toBe("deny");
+  });
+  it("checks text typed into a running terminal (manage_task send_input)", async () => {
+    expect(JSON.parse(await runHook(AGENTS.antigravity, sendInput("gh pr list\n"), deps, wrong)).decision).toBe("deny");
+    const list = JSON.stringify({ toolCall: { name: "manage_task", args: { Action: "list" } }, workspacePaths: ["/repo"] });
+    expect(JSON.parse(await runHook(AGENTS.antigravity, list, deps, wrong))).toEqual({ decision: "ask" });
+  });
+  it("ignores other tools and answers valid JSON even for unreadable input", async () => {
+    const view = JSON.stringify({ toolCall: { name: "view_file", args: { AbsolutePath: "/repo/gh" } }, workspacePaths: ["/repo"] });
+    expect(JSON.parse(await runHook(AGENTS.antigravity, view, deps, wrong))).toEqual({ decision: "ask" });
+    expect(JSON.parse(await runHook(AGENTS.antigravity, "not json", deps, wrong))).toEqual({ decision: "ask" });
   });
 });
 
@@ -145,6 +184,12 @@ describe("runHook: protected environments", () => {
   it("gemini denies, having no ask decision", async () => {
     const out = JSON.parse(await runHook(AGENTS.gemini, inputs.gemini("gh pr merge 12"), envDeps, {}));
     expect(out.decision).toBe("deny");
+  });
+
+  it("antigravity force-asks, so a cached Always Allow can't skip the confirmation", async () => {
+    const out = JSON.parse(await runHook(AGENTS.antigravity, inputs.antigravity("gh pr merge 12"), envDeps, {}));
+    expect(out.decision).toBe("force_ask");
+    expect(out.reason).toContain("needs your OK");
   });
 
   it("cursor asks, with messages for the user and the agent", async () => {

@@ -6,6 +6,15 @@ All notable changes to cloudpin are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Antigravity hooks (#80): `cloudpin install-hook antigravity` guards Antigravity CLI, the IDE and Antigravity 2.0
+  (`.agents/hooks.json`, or `~/.gemini/config/hooks.json` with `--user`). Google replaced Gemini CLI with Antigravity
+  CLI for free and consumer accounts on 2026-06-18. The hook checks `run_command` and text typed into a running
+  terminal; it asks rather than allows when nothing is wrong, so Antigravity's own approvals still apply.
+- The Copilot CLI and Antigravity CLI hooks are tested inside the real agents (#3): a wrong pin blocks the command, a
+  right one lets it run, and Antigravity's own approval still applies to commands you haven't allowed.
+
 ## [0.4.2] - 2026-10-10
 
 A clearer first run: CLIs you don't have are called "not installed".

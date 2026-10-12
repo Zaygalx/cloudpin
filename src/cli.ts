@@ -44,7 +44,7 @@ Usage:
   cloudpin exec -- <cmd...>   Run <cmd> only if it would act on the pinned account
                               (on a protected environment, changing commands ask first)
   cloudpin hook <agent>       Agent hook; reads the hook JSON on stdin
-                              (claude, codex, copilot, gemini, cursor)
+                              (claude, codex, copilot, gemini, antigravity, cursor)
   cloudpin install-hook <agent> [--user] [--yes]
   cloudpin uninstall-hook <agent> [--user] [--yes]
                               Add or remove the agent hook in this project's

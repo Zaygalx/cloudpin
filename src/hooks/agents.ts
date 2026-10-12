@@ -92,6 +92,35 @@ export const AGENTS = {
     noObjection: "",
   },
 
+  // Antigravity CLI, IDE and 2.0 (antigravity.google/docs/hooks; Gemini CLI's
+  // successor, #80): PreToolUse gets camelCase { toolCall: { name, args } }.
+  // run_command carries CommandLine and Cwd; manage_task with send_input types
+  // Input into a running terminal, so it is checked too. `decision` is required:
+  // "allow" would auto-approve and skip Antigravity's own approval, so no
+  // objection is "ask" (which honours the user's "Always Allow" settings), and a
+  // confirmation is "force_ask", which a cached approval can't skip.
+  antigravity: {
+    parse(input) {
+      const i = obj(input);
+      const call = obj(i.toolCall);
+      const args = obj(call.args);
+      const workspace = Array.isArray(i.workspacePaths) ? str(i.workspacePaths[0]) : undefined;
+      const fallback = workspace ?? process.cwd();
+      if (str(call.name) === "run_command") {
+        const command = str(args.CommandLine);
+        return command === undefined ? null : { command, cwd: str(args.Cwd) ?? fallback };
+      }
+      if (str(call.name) === "manage_task" && str(args.Action) === "send_input") {
+        const command = str(args.Input);
+        return command === undefined ? null : { command, cwd: fallback };
+      }
+      return null;
+    },
+    deny: (reason) => JSON.stringify({ decision: "deny", reason }),
+    ask: (reason) => JSON.stringify({ decision: "force_ask", reason }),
+    noObjection: JSON.stringify({ decision: "ask" }),
+  },
+
   // Cursor (cursor.com/docs/agent/hooks): beforeShellExecution gets
   // { command, cwd }. Output must be valid JSON with a permission, and the
   // docs do not say whether "allow" skips Cursor's own approval, so

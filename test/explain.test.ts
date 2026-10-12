@@ -139,7 +139,7 @@ describe("explain --agent on a protected environment", () => {
   it("says which agents ask and which stop the command", async () => {
     const [call] = await run(["vercel", "deploy", "--prod"], prod, { mode: "agent" });
     expect(call!.verdict).toBe("ask");
-    expect(call!.reason).toContain("Claude Code, Copilot CLI and Cursor ask you first; Codex and Gemini CLI, which can't ask, stop it");
+    expect(call!.reason).toContain("Claude Code, Copilot CLI, Antigravity and Cursor ask you first; Codex and Gemini CLI, which can't ask, stop it");
   });
 });
 

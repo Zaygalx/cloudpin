@@ -27,8 +27,22 @@ export function hookFile(agent: AgentName, scope: Scope, root: string, env: Node
     case "copilot":
       if (scope === "project") return join(root, ".github", "hooks", "cloudpin.json");
       return join(env.COPILOT_HOME ?? join(home(env), ".copilot"), "hooks", "cloudpin.json");
+    case "antigravity":
+      // antigravity.google/docs/hooks: read by Antigravity CLI, IDE and 2.0 alike.
+      return scope === "project" ? join(root, ".agents", "hooks.json") : join(home(env), ".gemini", "config", "hooks.json");
   }
 }
+
+// Antigravity's hooks.json maps hook names to events, so cloudpin owns one named entry.
+const ANTIGRAVITY_HOOK = "cloudpin";
+const antigravityEntry = () => ({
+  PreToolUse: [
+    {
+      matcher: "run_command|manage_task",
+      hooks: [{ type: "command", command: command("antigravity"), timeout: 60 }],
+    },
+  ],
+});
 
 type Json = Record<string, unknown>;
 
@@ -76,12 +90,19 @@ function layout(agent: AgentName): { event: string; entry: Json; version?: numbe
         entry: { type: "command", matcher: "bash|powershell", bash: cmd, powershell: cmd, timeoutSec: 60 },
         version: 1,
       };
+    case "antigravity":
+      throw new Error("Antigravity's file has no top-level hooks list"); // handled by name below
   }
 }
 
 /** The file content with cloudpin's hook added (unchanged if already there). */
 export function planInstall(agent: AgentName, existing: string | null): { content: string; alreadyInstalled: boolean } {
   const settings = parse(existing);
+  if (agent === "antigravity") {
+    if (Object.values(settings).some(mentionsCloudpin)) return { content: existing!, alreadyInstalled: true };
+    settings[ANTIGRAVITY_HOOK] = antigravityEntry();
+    return { content: render(settings), alreadyInstalled: false };
+  }
   if (existing !== null && existing.includes(command(agent))) {
     if (agent === "cursor" && updateCursorMatcher(settings)) return { content: render(settings), alreadyInstalled: false };
     return { content: existing, alreadyInstalled: true };
@@ -126,6 +147,10 @@ export function planUninstall(agent: AgentName, existing: string | null): { foun
   const settings = parse(existing);
   if (!mentionsCloudpin(settings)) return { found: false, content: existing };
   if (agent === "copilot") return { found: true, content: null };
+  if (agent === "antigravity") {
+    for (const name of Object.keys(settings)) if (mentionsCloudpin(settings[name])) delete settings[name];
+    return { found: true, content: Object.keys(settings).length === 0 ? null : render(settings) };
+  }
 
   const { event } = layout(agent);
   const hooks = settings.hooks as Json;

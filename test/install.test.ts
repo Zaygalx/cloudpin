@@ -15,6 +15,9 @@ describe("hookFile", () => {
     ["cursor", "project", join(ROOT, ".cursor", "hooks.json")],
     ["copilot", "project", join(ROOT, ".github", "hooks", "cloudpin.json")],
     ["copilot", "user", join(HOME, ".copilot", "hooks", "cloudpin.json")],
+    // antigravity.google/docs/hooks: shared by Antigravity CLI, IDE and 2.0.
+    ["antigravity", "project", join(ROOT, ".agents", "hooks.json")],
+    ["antigravity", "user", join(HOME, ".gemini", "config", "hooks.json")],
   ] as const)("%s %s -> %s", (agent, scope, path) => {
     expect(hookFile(agent, scope, ROOT, { HOME })).toBe(path);
   });
@@ -133,6 +136,31 @@ describe("planInstall", () => {
 
   it("refuses to touch a file it cannot parse", () => {
     expect(() => planInstall("claude", "{ not json")).toThrow(/not valid JSON/);
+  });
+});
+
+describe("antigravity (#80)", () => {
+  // Top-level keys are hook names, each mapping events to matcher groups.
+  const entry = {
+    PreToolUse: [
+      { matcher: "run_command|manage_task", hooks: [{ type: "command", command: "cloudpin hook antigravity", timeout: 60 }] },
+    ],
+  };
+  const theirs = { "my-linter": { PostToolUse: [{ matcher: "run_command", hooks: [{ command: "./lint.sh" }] }] } };
+
+  it("adds a cloudpin hook next to the user's own, idempotently", () => {
+    const plan = planInstall("antigravity", JSON.stringify(theirs));
+    expect(JSON.parse(plan.content)).toEqual({ ...theirs, cloudpin: entry });
+    expect(planInstall("antigravity", plan.content).alreadyInstalled).toBe(true);
+    expect(JSON.parse(planInstall("antigravity", null).content)).toEqual({ cloudpin: entry });
+  });
+
+  it("removes only its own hook, and deletes a file that held nothing else", () => {
+    const removed = planUninstall("antigravity", planInstall("antigravity", JSON.stringify(theirs)).content);
+    expect(removed.found).toBe(true);
+    expect(JSON.parse(removed.content!)).toEqual(theirs);
+    expect(planUninstall("antigravity", planInstall("antigravity", null).content)).toEqual({ found: true, content: null });
+    expect(planUninstall("antigravity", JSON.stringify(theirs))).toMatchObject({ found: false });
   });
 });
 
