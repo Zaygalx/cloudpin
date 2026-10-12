@@ -6,6 +6,12 @@ All notable changes to cloudpin are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Cursor: a command on your Cursor allowlist runs again when the account matches (#2). cloudpin answered `ask`, which
+  stopped even allowlisted commands; it now answers `allow`, which Cursor treats exactly like having no hook (measured
+  in Cursor CLI 2026.10.01: commands not on the allowlist still need your approval). Wrong accounts are still blocked.
+
 ### Added
 
 - Antigravity hooks (#80): `cloudpin install-hook antigravity` guards Antigravity CLI, the IDE and Antigravity 2.0

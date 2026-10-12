@@ -126,9 +126,11 @@ describe("runHook: cursor", () => {
     expect(out.user_message).toContain("blocked `gh pr list`");
     expect(out.agent_message).toContain("ask the user");
   });
-  it("answers ask (Cursor's own approval) rather than allow when there is no problem", async () => {
+  it("answers allow when there is no problem, which leaves Cursor's own approval rules in charge (#2)", async () => {
+    // Measured in Cursor CLI 2026.10.01: "allow" ran an allowlisted command and still stopped one that wasn't,
+    // exactly as with no hook; "ask" stopped even the allowlisted one.
     expect(JSON.parse(await runHook(AGENTS.cursor, inputs.cursor("gh pr list"), deps, {}))).toEqual({
-      permission: "ask",
+      permission: "allow",
     });
   });
 });

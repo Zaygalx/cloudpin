@@ -257,7 +257,7 @@ environment by setting `CLOUDPIN_ENV` in their own command, and need your OK to 
 |---|---|---|
 | Claude Code | `.claude/settings.json` | Tested inside the agent |
 | Codex | `.codex/hooks.json` | Tested inside the agent |
-| Cursor | `.cursor/hooks.json` | Built to the documented hook format |
+| Cursor | `.cursor/hooks.json` | Tested inside the agent (Cursor CLI) |
 | GitHub Copilot CLI | `.github/hooks/cloudpin.json` | Tested inside the agent |
 | Antigravity (CLI, IDE and 2.0) | `.agents/hooks.json` | Tested inside Antigravity CLI |
 | Gemini CLI | `.gemini/settings.json` | Built to the documented hook format |

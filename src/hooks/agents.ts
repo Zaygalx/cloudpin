@@ -122,9 +122,11 @@ export const AGENTS = {
   },
 
   // Cursor (cursor.com/docs/agent/hooks): beforeShellExecution gets
-  // { command, cwd }. Output must be valid JSON with a permission, and the
-  // docs do not say whether "allow" skips Cursor's own approval, so
-  // "no objection" is "ask": Cursor's normal approval applies.
+  // { command, cwd }. Output must be valid JSON with a permission. The docs
+  // don't say how "allow" relates to Cursor's own approval, so it was measured
+  // (#2, Cursor CLI 2026.10.01): "allow" ran an allowlisted command and still
+  // stopped one that wasn't, exactly as with no hook, while "ask" stopped even
+  // the allowlisted one. So "no objection" is "allow".
   cursor: {
     parse(input) {
       const i = obj(input);
@@ -138,7 +140,7 @@ export const AGENTS = {
         agent_message: reason,
       }),
     ask: (reason) => JSON.stringify({ permission: "ask", user_message: reason, agent_message: reason }),
-    noObjection: JSON.stringify({ permission: "ask" }),
+    noObjection: JSON.stringify({ permission: "allow" }),
   },
 } satisfies Record<string, AgentHook>;
 
