@@ -38,14 +38,18 @@ cloudpin is a seatbelt, not a sandbox.
 - **Fail closed, and explain**: when cloudpin can't tell which account a command would use (an expired login, a
   broken token, no network), it blocks the command and says why (`src/guard.ts`, `uncertain`). A pin file it can't
   parse also blocks every guarded command except login, logout, switch, whoami, help and version (#62, #67).
-- **Agent hooks never fail open**: an error inside the hook, or a check slower than 45 seconds, becomes an explicit
-  deny (`runHook` in `src/hooks/agents.ts`), because some agents (Claude Code and Codex among them) run the command
-  when a hook crashes or times out.
+- **Agent hooks fail closed once cloudpin is running**: an error inside the hook, or a check slower than 45 seconds,
+  becomes an explicit deny (`runHook` in `src/hooks/agents.ts`), because some agents (Claude Code and Codex among
+  them) run the command when a hook crashes or times out. If cloudpin can't start at all (uninstalled, or not on the
+  agent's PATH), there is nothing to answer and those agents run the command; `cloudpin doctor` checks that cloudpin
+  is on PATH and which hooks are installed.
 - **"No objection" never weakens the agent's own approvals**: each hook answers so that the agent's normal rules still
   apply. This was measured inside Cursor and Antigravity (#2, #80).
 - **Whole command lines, not just the first word**: pipes, `&&`, subshells, `bash -c`, `eval`, `xargs`, `find -exec`,
   `npx` and heredocs are searched for guarded CLIs (`src/shellwords.ts`, with fuzz tests in
-  `test/shellwords-fuzz.test.ts`).
+  `test/shellwords-fuzz.test.ts`). Variables the line sets before a call count (`export AWS_PROFILE=other;`,
+  PowerShell `$env:`), and a call whose account depends on a value only known when it runs (`GH_TOKEN=$(cat f) gh`)
+  is blocked as "can't tell" (#86).
 - **Never touch credentials**: cloudpin only runs each CLI's read-only identity command, never prints, logs or caches
   a token, and never runs commands that print secrets (`aws configure list`, `--show-token`, `--reveal`). Error
   messages name environment variables, never their values.
@@ -65,9 +69,13 @@ These are real limits, stated so nobody relies on cloudpin for them:
 - **A malicious or prompt-injected agent.** An agent that can write files can edit `.cloudpin.yml` to pin its current
   account, remove the hook from its own settings, or write a script and run it later (`bash deploy.sh`), which
   cloudpin can't see into. cloudpin catches an agent's honest mistake; it is not a sandbox. Use the agent's own
-  permission system for that.
+  permission system for that, and in it deny the agent edits to `.cloudpin.yml` and to its own hook settings file.
+- **Which resource inside the account.** cloudpin checks the identity a command acts as and the account or project it
+  lands in, not which repository, Vercel project, region or resource group it targets. `gh repo delete other/repo`
+  passes if you are logged in as the pinned user. (A pinned Kubernetes namespace is the exception.)
 - **A command cloudpin doesn't guard.** Only the CLIs above are checked. A cloud SDK called from a program, `curl` to a
-  cloud API or a Terraform run acts on whatever credentials it finds.
+  cloud API, a Terraform run, or an agent's MCP tools for a cloud provider (which never go through the shell hook) act
+  on whatever credentials they find.
 - **A compromised machine or PATH.** A fake `az` earlier on PATH, a tampered kubeconfig or a malicious shell profile
   can make the CLI report any identity.
 - **Environment set up by someone else.** Variables set before the agent starts are the user's choice and are
