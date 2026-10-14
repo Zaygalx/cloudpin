@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { formatBlock, formatConfirm } from "../format.js";
 import { commandName, guard, type GuardDeps } from "../guard.js";
-import { findInvocations } from "../shellwords.js";
+import { envFor, findInvocations } from "../shellwords.js";
 
 /** How one agent hands a shell command to its hook and reads the answer. */
 export interface AgentHook {
@@ -144,15 +144,6 @@ export const AGENTS = {
   },
 } satisfies Record<string, AgentHook>;
 
-// Set by the user before starting the agent, these count; set by the agent
-// inside its own command, they would let it pick a laxer environment, confirm
-// for the user or skip the check, so they are dropped.
-const USER_ONLY_VARS = ["CLOUDPIN_ENV", "CLOUDPIN_CONFIRM", "CLOUDPIN_SKIP"];
-
-export function withoutUserOnlyVars(vars: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(vars).filter(([k]) => !USER_ONLY_VARS.includes(k)));
-}
-
 /** A request for the user's OK: the text an agent asks with, or the one it is denied with. */
 interface Confirmation {
   ask: string;
@@ -247,7 +238,7 @@ async function checkCommand(
       {
         bin: inv.bin,
         args: inv.args,
-        env: { ...env, ...withoutUserOnlyVars(inv.env) },
+        env: envFor(env, inv, { agent: true }),
         cwd: inv.cwd ?? call.cwd,
         mode: "agent",
       },

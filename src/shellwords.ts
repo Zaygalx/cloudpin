@@ -1,20 +1,54 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { commandName } from "./guard.js";
+import { UNKNOWN_VALUE } from "./types.js";
 
 export interface Invocation {
   /** Executable as written, e.g. "gh" or "/usr/bin/gh". */
   bin: string;
   args: string[];
-  /** VAR=value assignments written before the command. */
+  /**
+   * Variables the CLI receives from the line: exported earlier in it (`export X=1;`,
+   * PowerShell `$env:X = 1`) or assigned before the command (`X=1 cli`) (#86).
+   */
   env: Record<string, string>;
+  /** Plain `X=1;` assignments earlier in the line: they reach the CLI only if X is already exported. */
+  ifExported?: Record<string, string>;
+  /** Names `unset` earlier in the line. */
+  unset?: string[];
   /** Folder the call runs in, when a `cd` earlier in the line changed it. */
   cwd?: string;
 }
 
+export { UNKNOWN_VALUE };
+
+/**
+ * Variables only the user may set. Set before starting the agent, they count; set by the agent inside its own command,
+ * they would let it pick a laxer environment, confirm for the user or skip the check, so they are ignored there.
+ */
+export const USER_ONLY_VARS = ["CLOUDPIN_ENV", "CLOUDPIN_CONFIRM", "CLOUDPIN_SKIP"];
+
+/**
+ * The environment a call runs with: `base` (the environment the line starts
+ * in), then the line's plain assignments to names already exported, its
+ * `unset`s, and its exported and prefix variables. With `agent`, the line can't
+ * set or unset the user-only variables.
+ */
+export function envFor(base: NodeJS.ProcessEnv, inv: Invocation, opts: { agent?: boolean } = {}): NodeJS.ProcessEnv {
+  const allowed = (name: string) => !(opts.agent && USER_ONLY_VARS.includes(name));
+  const out: NodeJS.ProcessEnv = { ...base };
+  for (const [name, value] of Object.entries(inv.ifExported ?? {})) if (name in base && allowed(name)) out[name] = value;
+  for (const name of inv.unset ?? []) if (allowed(name)) delete out[name];
+  for (const [name, value] of Object.entries(inv.env)) if (allowed(name)) out[name] = value;
+  return out;
+}
+
 type Token =
-  /** `quoted`: some of it was in quotes, so `"vercel"` is a string, not a command. */
-  | { kind: "word"; value: string; quoted: boolean }
+  /**
+   * `quoted`: some of it was in quotes, so `"vercel"` is a string, not a command.
+   * `dynamic`: it contains `$(...)`, backticks or a `$NAME` expansion, so its value is only known when it runs.
+   */
+  | { kind: "word"; value: string; quoted: boolean; dynamic: boolean }
   /** A control operator: ; & | newline, or ( and ) which open and close a subshell. */
   | { kind: "op"; op: string }
   /** $( ... ) or backticks: a command line run in a subshell. */
@@ -31,17 +65,21 @@ function tokenize(input: string): Token[] {
   let word = "";
   let inWord = false;
   let quoted = false;
+  let dynamic = false;
   // The next word is a here-string (`<<< word`), not an argument.
   let hereString = false;
   // Heredocs whose bodies start after the next newline.
   const pending: { token: { kind: "stdin"; body: string }; delimiter: string; stripTabs: boolean }[] = [];
   const flush = () => {
-    if (inWord) tokens.push(hereString ? { kind: "stdin", body: word } : { kind: "word", value: word, quoted });
+    if (inWord) tokens.push(hereString ? { kind: "stdin", body: word } : { kind: "word", value: word, quoted, dynamic });
     if (inWord) hereString = false;
     word = "";
     inWord = false;
     quoted = false;
+    dynamic = false;
   };
+  // `$NAME` or `${NAME}` (not `$` alone or `$1`): an expansion outside single quotes.
+  const expands = (at: number) => /[A-Za-z_{]/.test(input[at + 1] ?? "");
 
   // Reads $( ... ) starting after "$(", honouring nesting and quotes.
   const readParen = (start: number): number => {
@@ -125,9 +163,14 @@ function tokenize(input: string): Token[] {
         if (d === "\\" && i + 1 < input.length && '"\\$`\n'.includes(input[i + 1]!)) {
           word += input[i + 1];
           i += 2;
-        } else if (d === "$" && input[i + 1] === "(") i = readParen(i + 2);
-        else if (d === "`") i = readBacktick(i + 1);
-        else {
+        } else if (d === "$" && input[i + 1] === "(") {
+          dynamic = true;
+          i = readParen(i + 2);
+        } else if (d === "`") {
+          dynamic = true;
+          i = readBacktick(i + 1);
+        } else {
+          if (d === "$" && expands(i)) dynamic = true;
           word += d;
           i++;
         }
@@ -141,9 +184,11 @@ function tokenize(input: string): Token[] {
       i += 2;
     } else if (c === "$" && input[i + 1] === "(") {
       inWord = true;
+      dynamic = true;
       i = readParen(i + 2);
     } else if (c === "`") {
       inWord = true;
+      dynamic = true;
       i = readBacktick(i + 1);
     } else if (c === "#" && !inWord) {
       // A comment runs to the end of the line.
@@ -172,6 +217,7 @@ function tokenize(input: string): Token[] {
       i++;
       if (c === "\n" && pending.length > 0) i = readBodies(i);
     } else {
+      if (c === "$" && expands(i)) dynamic = true;
       word += c;
       inWord = true;
       i++;
@@ -213,30 +259,78 @@ interface State {
   base?: string;
   /** Variables set by plain `NAME=value` commands earlier in the line. */
   vars: Record<string, string>;
+  /** Of those, the ones the shell passes to the commands it runs: `export`ed, or PowerShell `$env:` (#86). */
+  exported: Record<string, string>;
+  /** Plain `NAME=value` assignments not exported here: they reach a command only if NAME was already exported. */
+  plain: Record<string, string>;
+  /** Names `unset` and not set again since. */
+  unset: Set<string>;
   /** The whole command line, to spot CLI names behind an unknown `$VAR` command. */
   line: string;
   guarded: Set<string>;
 }
 
 /** A copy for code that runs in a child shell, whose `cd` and variables do not come back. */
-const child = (state: State): State => ({ ...state, vars: { ...state.vars } });
+const child = (state: State): State => ({
+  ...state,
+  vars: { ...state.vars },
+  exported: { ...state.exported },
+  plain: { ...state.plain },
+  unset: new Set(state.unset),
+});
 
 // PowerShell assignment: `$name = <value>` or `$name=<value>`.
 const PS_ASSIGNMENT = /^\$([A-Za-z_][A-Za-z0-9_]*)(?:=(.*))?$/s;
+// PowerShell environment variable: `$env:NAME = <value>` or `$env:NAME=<value>` (#86).
+const PS_ENV = /^\$env:([A-Za-z_][A-Za-z0-9_]*)(?:=(.*))?$/is;
+// Builtins that export: `export`, and `declare`/`typeset` with -x.
+const EXPORTERS = new Set(["export", "declare", "typeset"]);
 
-function analyse(words: string[], stdin: string[], out: Invocation[], state: State, quoted: boolean[] = []): void {
+/** Sets NAME for the rest of the line, exported or not. */
+function assign(state: State, name: string, value: string, exported: boolean): void {
+  state.vars[name] = value;
+  state.unset.delete(name);
+  // Assigning to an exported variable updates what commands receive.
+  if (exported || name in state.exported) {
+    state.exported[name] = value;
+    delete state.plain[name];
+  } else state.plain[name] = value;
+}
+
+function analyse(
+  words: string[],
+  stdin: string[],
+  out: Invocation[],
+  state: State,
+  quoted: boolean[] = [],
+  dynamic: boolean[] = [],
+): void {
+  const psEnv = PS_ENV.exec(words[0] ?? "");
+  if (psEnv && (psEnv[2] !== undefined || words[1] === "=")) {
+    // A single literal (`'other'`, `other`) is known; anything else (an expression,
+    // a command, `(Get-Content f)`, `$x`) is only known when it runs.
+    const inline = psEnv[2] !== undefined && psEnv[2] !== "";
+    const from = inline ? 1 : psEnv[2] !== undefined ? 1 : 2;
+    const value = inline ? psEnv[2]! : words[from];
+    // Inline, the word's own `$env:` counts as an expansion, so look at the value part alone.
+    const expandsValue = inline ? /\$[A-Za-z_{(]/.test(value!) : dynamic[from];
+    const known = value !== undefined && words.length === (inline ? 1 : from + 1) && !expandsValue;
+    assign(state, psEnv[1]!, known ? value : UNKNOWN_VALUE, true);
+    return;
+  }
   const ps = PS_ASSIGNMENT.exec(words[0] ?? "");
   if (ps && (ps[2] !== undefined || words[1] === "=")) {
     // `$x = "vercel"` stores a string; `$x = vercel ls` runs vercel and stores its output.
     const inline = ps[2] !== undefined && ps[2] !== "";
     const rest = inline ? [ps[2]!, ...words.slice(1)] : words.slice(ps[2] !== undefined ? 1 : 2);
     const restQuoted = inline ? quoted : quoted.slice(ps[2] !== undefined ? 1 : 2);
+    const restDynamic = inline ? dynamic : dynamic.slice(ps[2] !== undefined ? 1 : 2);
     if (rest.length === 1 && restQuoted[0]) {
       state.vars[ps[1]!] = rest[0]!;
       return;
     }
     delete state.vars[ps[1]!];
-    if (rest.length > 0) analyse(rest, stdin, out, state, restQuoted);
+    if (rest.length > 0) analyse(rest, stdin, out, state, restQuoted, restDynamic);
     return;
   }
   const env: Record<string, string> = {};
@@ -245,14 +339,14 @@ function analyse(words: string[], stdin: string[], out: Invocation[], state: Sta
     const word = words[i];
     if (word === undefined) {
       // Only assignments: they set shell variables for the rest of the line.
-      Object.assign(state.vars, env);
+      for (const [name, value] of Object.entries(env)) assign(state, name, value, false);
       return;
     }
     const assignment = ASSIGNMENT.exec(word);
     const name = commandName(word);
     const wrapper = VALUE_WRAPPERS[name];
     if (assignment) {
-      env[assignment[1]!] = assignment[2]!;
+      env[assignment[1]!] = dynamic[i] ? UNKNOWN_VALUE : assignment[2]!;
       i++;
     } else if (wrapper) {
       i++;
@@ -278,7 +372,8 @@ function analyse(words: string[], stdin: string[], out: Invocation[], state: Sta
   // A command held in a variable: `CLI=vercel; $CLI deploy`.
   const variable = VARIABLE.exec(bin);
   if (variable) {
-    const value = state.vars[variable[1] ?? variable[2]!];
+    const held = state.vars[variable[1] ?? variable[2]!];
+    const value = held === UNKNOWN_VALUE ? undefined : held;
     if (value === undefined) {
       // Unknown here (set elsewhere): check every guarded CLI the line names.
       // A bare `$files` is most likely a value (PowerShell pipes it), not a command.
@@ -293,6 +388,31 @@ function analyse(words: string[], stdin: string[], out: Invocation[], state: Sta
   }
 
   const name = commandName(bin);
+  if (EXPORTERS.has(name)) {
+    // `declare`/`typeset` export only with -x; `export -n` un-exports (left alone: it never adds a variable).
+    const flags = args.filter((a) => a.startsWith("-"));
+    if (name !== "export" && !flags.some((f) => /^-[a-zA-Z]*x/.test(f))) return;
+    if (flags.includes("-n")) return;
+    const offset = i + 1;
+    args.forEach((arg, k) => {
+      if (arg.startsWith("-")) return;
+      const set = ASSIGNMENT.exec(arg);
+      if (set) assign(state, set[1]!, dynamic[offset + k] ? UNKNOWN_VALUE : set[2]!, true);
+      else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(arg) && arg in state.vars) assign(state, arg, state.vars[arg]!, true);
+    });
+    return;
+  }
+  if (name === "unset") {
+    if (args.includes("-f")) return;
+    for (const arg of args) {
+      if (arg.startsWith("-")) continue;
+      delete state.vars[arg];
+      delete state.exported[arg];
+      delete state.plain[arg];
+      state.unset.add(arg);
+    }
+    return;
+  }
   if (name === "cd") {
     const target = args[0];
     if (target !== undefined && target !== "-") {
@@ -331,7 +451,11 @@ function analyse(words: string[], stdin: string[], out: Invocation[], state: Sta
 }
 
 function invocation(bin: string, args: string[], env: Record<string, string>, state: State): Invocation {
-  return state.cwd === undefined ? { bin, args, env } : { bin, args, env, cwd: state.cwd };
+  const inv: Invocation = { bin, args, env: { ...state.exported, ...env } };
+  if (Object.keys(state.plain).length > 0) inv.ifExported = { ...state.plain };
+  if (state.unset.size > 0) inv.unset = [...state.unset];
+  if (state.cwd !== undefined) inv.cwd = state.cwd;
+  return inv;
 }
 
 /** Guarded CLI names that appear as whole words anywhere in the line. */
@@ -344,27 +468,37 @@ function namedClis(state: State): string[] {
 function collect(input: string, out: Invocation[], state: State): void {
   let segment: string[] = [];
   let quoted: boolean[] = [];
+  let dynamic: boolean[] = [];
   let stdin: string[] = [];
-  // Folders to go back to when a ( ) subshell ends.
-  const saved: (string | undefined)[] = [];
+  // What to go back to when a ( ) subshell ends: its `cd` and variables don't come back (#86).
+  const saved: State[] = [];
   const end = () => {
-    if (segment.length > 0) analyse(segment, stdin, out, state, quoted);
+    if (segment.length > 0) analyse(segment, stdin, out, state, quoted, dynamic);
     segment = [];
     quoted = [];
+    dynamic = [];
     stdin = [];
   };
   for (const token of tokenize(input)) {
     if (token.kind === "word") {
       segment.push(token.value);
       quoted.push(token.quoted);
+      dynamic.push(token.dynamic);
     }
     else if (token.kind === "stdin") stdin.push(token.body);
     // Runs where it appears, in a child shell, so a `cd` inside does not leak.
     else if (token.kind === "subst") collect(token.inner, out, child(state));
     else {
       end();
-      if (token.op === "(") saved.push(state.cwd);
-      else if (token.op === ")" && saved.length > 0) state.cwd = saved.pop();
+      if (token.op === "(") saved.push(child(state));
+      else if (token.op === ")" && saved.length > 0) {
+        const outer = saved.pop()!;
+        state.cwd = outer.cwd;
+        state.vars = outer.vars;
+        state.exported = outer.exported;
+        state.plain = outer.plain;
+        state.unset = outer.unset;
+      }
     }
   }
   end();
@@ -381,6 +515,14 @@ function collect(input: string, out: Invocation[], state: State): void {
  */
 export function findInvocations(command: string, guardedBins: string[], baseCwd?: string): Invocation[] {
   const out: Invocation[] = [];
-  collect(command, out, { base: baseCwd, vars: {}, line: command, guarded: new Set(guardedBins) });
+  collect(command, out, {
+    base: baseCwd,
+    vars: {},
+    exported: {},
+    plain: {},
+    unset: new Set(),
+    line: command,
+    guarded: new Set(guardedBins),
+  });
   return out;
 }

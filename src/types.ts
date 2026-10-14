@@ -57,3 +57,9 @@ export interface ProviderDef<P extends Provider = Provider> {
   /** Environment variables and files that decide the identity (cache invalidation). */
   cacheInputs(env: NodeJS.ProcessEnv): CacheInputs;
 }
+
+/**
+ * A variable's value when the line sets it from something only known when it
+ * runs: `$(...)`, backticks, `$OTHER`, a PowerShell expression (#86).
+ */
+export const UNKNOWN_VALUE = "<cloudpin: set by the command line, unknown in advance>";

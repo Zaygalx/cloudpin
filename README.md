@@ -268,7 +268,10 @@ serves paid API keys and enterprise licenses, so both are supported.
 cloudpin reads the whole command line the agent is about to run, so it also catches
 `cd ../other && npx vercel deploy`, `bash -c "..."`, pipelines, `$( )`, `xargs`, `find -exec`, heredocs fed to a shell
 (`bash <<EOF`), commands held in a variable (`CLI=vercel; $CLI deploy`) and PowerShell assignments
-(`$prs = gh pr list`). It can't see inside a script file the agent writes and runs later (`bash deploy.sh`).
+(`$prs = gh pr list`). Variables set earlier in the line count too (`export AWS_PROFILE=other; aws ...`,
+`$env:AWS_PROFILE = 'other'`), and when one that decides the account is set from something only known when it runs
+(`GH_TOKEN=$(cat file) gh ...`), the command is stopped with the reason. It can't see inside a script file the agent
+writes and runs later (`bash deploy.sh`).
 
 ## Configuration
 

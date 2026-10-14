@@ -13,7 +13,7 @@ const gh: ProviderDef<"github"> = {
   compare: (pin, id) => (pin.user === id.user ? [] : [`user: expected "${pin.user}", active is "${id.user}"`]),
   switchHint: (pin) => `gh auth switch --user ${pin.user}`,
   statusCommand: "gh auth status",
-  cacheInputs: () => ({ env: [], files: [], dirs: [] }),
+  cacheInputs: () => ({ env: ["FAKE_GH_USER", "GH_TOKEN"], files: [], dirs: [] }),
 };
 const config: FoundConfig = { path: "/repo/.cloudpin.yml", pins: { github: { user: "paureis" } } };
 const deps: GuardDeps = {
@@ -49,6 +49,38 @@ const inputs = {
       modelName: "gemini-3.6-flash-medium",
     }),
 };
+
+// #86: variables set earlier in the agent's line decide the account the CLI uses.
+describe("runHook: environment set earlier in the line", () => {
+  const decision = async (command: string, env: NodeJS.ProcessEnv = {}) =>
+    JSON.parse((await runHook(AGENTS.codex, inputs.codex(command), deps, env)) || "{}").hookSpecificOutput?.permissionDecision ?? "none";
+
+  it("denies when an export earlier in the line switches to the wrong account", async () => {
+    expect(await decision("export FAKE_GH_USER=someone; gh pr list")).toBe("deny");
+    expect(await decision("$env:FAKE_GH_USER = 'someone'; gh pr list")).toBe("deny");
+    expect(await decision("export FAKE_GH_USER=paureis; gh pr list")).toBe("none");
+  });
+
+  it("counts a plain assignment only when the variable is already exported", async () => {
+    expect(await decision("FAKE_GH_USER=someone; gh pr list")).toBe("none");
+    expect(await decision("FAKE_GH_USER=someone; gh pr list", { FAKE_GH_USER: "paureis" })).toBe("deny");
+  });
+
+  it("follows unset", async () => {
+    expect(await decision("unset FAKE_GH_USER; gh pr list", { FAKE_GH_USER: "someone" })).toBe("none");
+  });
+
+  it("denies, saying why, when a variable that decides the account is set from something unknown in advance", async () => {
+    const out = JSON.parse(await runHook(AGENTS.codex, inputs.codex("GH_TOKEN=$(cat other.token) gh repo list"), deps, {}));
+    expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(out.hookSpecificOutput.permissionDecisionReason).toContain("GH_TOKEN");
+    expect(await decision("export GH_TOKEN=$(cat other.token); gh repo list")).toBe("deny");
+  });
+
+  it("ignores an unknown value for a variable that doesn't decide the account", async () => {
+    expect(await decision("export PAGER=$(which less); gh pr list")).toBe("none");
+  });
+});
 
 describe("runHook: codex (same protocol as Claude Code)", () => {
   it("denies through hookSpecificOutput", async () => {

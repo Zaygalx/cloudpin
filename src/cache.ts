@@ -49,11 +49,14 @@ function dirStamp(path: string): string[] {
   }
 }
 
+/** Whether `key` is one of `names`, where a trailing "*" matches a prefix (as in CacheInputs.env). */
+export function envNameMatches(names: string[], key: string): boolean {
+  return names.some((n) => (n.endsWith("*") ? key.startsWith(n.slice(0, -1)) : key === n));
+}
+
 function relevantEnv(names: string[], env: NodeJS.ProcessEnv): [string, string][] {
   return Object.entries(env)
-    .filter(([key, value]) =>
-      value !== undefined && names.some((n) => (n.endsWith("*") ? key.startsWith(n.slice(0, -1)) : key === n)),
-    )
+    .filter(([key, value]) => value !== undefined && envNameMatches(names, key))
     .map(([key, value]) => [key, value as string] as [string, string])
     .sort(([a], [b]) => a.localeCompare(b));
 }

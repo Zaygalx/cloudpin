@@ -8,6 +8,12 @@ All notable changes to cloudpin are listed here. The format follows
 
 ### Fixed
 
+- Variables an agent sets earlier in its command line now count (#86). `export AWS_PROFILE=other; aws ...` and
+  PowerShell `$env:AWS_PROFILE = 'other'; aws ...` were checked against the default account and ran on another; and
+  `GH_TOKEN=$(cat other.token) gh ...` read the token as empty. cloudpin now follows `export`, `unset` and `$env:`
+  through the line, and stops a command whose account depends on a value only known when it runs, saying why. Found
+  in the threat-model review.
+
 - Cursor: a command on your Cursor allowlist runs again when the account matches (#2). cloudpin answered `ask`, which
   stopped even allowlisted commands; it now answers `allow`, which Cursor treats exactly like having no hook (measured
   in Cursor CLI 2026.10.01: commands not on the allowlist still need your approval). Wrong accounts are still blocked.

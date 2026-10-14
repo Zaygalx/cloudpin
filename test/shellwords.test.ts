@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { commandName } from "../src/guard.js";
-import { findInvocations } from "../src/shellwords.js";
+import { envFor, findInvocations, UNKNOWN_VALUE } from "../src/shellwords.js";
 
 const GUARDED = ["az", "aws", "gcloud", "vercel", "gh"];
 const find = (cmd: string) => findInvocations(cmd, GUARDED);
@@ -113,5 +113,84 @@ describe("findInvocations with cd", () => {
 
   it("leaves cwd unset when there is no cd", () => {
     expect(findInvocations("gh pr list", GUARDED, base)[0]?.cwd).toBeUndefined();
+  });
+});
+
+// #86: a variable set by an earlier statement in the line reaches the CLI.
+describe("findInvocations: environment set earlier in the line", () => {
+  const one = (cmd: string) => find(cmd)[0]!;
+
+  it.each([
+    ["export AWS_PROFILE=other; aws s3 ls"],
+    ["export AWS_PROFILE=other && aws s3 ls"],
+    ["export AWS_PROFILE='other'\naws s3 ls"],
+    ["declare -x AWS_PROFILE=other; aws s3 ls"],
+    ["typeset -x AWS_PROFILE=other; aws s3 ls"],
+    ["$env:AWS_PROFILE='other'; aws s3 ls"],
+    ['$env:AWS_PROFILE = "other"; aws s3 ls'],
+  ])("applies %j to the later call", (cmd) => {
+    expect(one(cmd).env).toEqual({ AWS_PROFILE: "other" });
+  });
+
+  it("exports a variable assigned before `export NAME`", () => {
+    expect(one("AWS_PROFILE=other; export AWS_PROFILE; aws s3 ls").env).toEqual({ AWS_PROFILE: "other" });
+  });
+
+  it("lets a prefix assignment win over an earlier export, for that call only", () => {
+    const calls = find("export AWS_PROFILE=a; AWS_PROFILE=b aws s3 ls; aws ec2 describe-instances");
+    expect(calls.map((c) => c.env.AWS_PROFILE)).toEqual(["b", "a"]);
+  });
+
+  it("keeps an export inside a subshell or bash -c from leaking out", () => {
+    expect(one("(export AWS_PROFILE=other); aws s3 ls").env).toEqual({});
+    expect(one("bash -c 'export AWS_PROFILE=other'; aws s3 ls").env).toEqual({});
+    expect(one("(export AWS_PROFILE=other; aws s3 ls)").env).toEqual({ AWS_PROFILE: "other" });
+  });
+
+  it("reports a plain assignment separately: it only reaches the CLI if the name is already exported", () => {
+    const call = one("AWS_PROFILE=other; aws s3 ls");
+    expect(call.env).toEqual({});
+    expect(call.ifExported).toEqual({ AWS_PROFILE: "other" });
+  });
+
+  it("reports unset names", () => {
+    expect(one("unset AWS_PROFILE; aws s3 ls").unset).toEqual(["AWS_PROFILE"]);
+    expect(one("export AWS_PROFILE=x; unset AWS_PROFILE; aws s3 ls").env).toEqual({});
+  });
+
+  it.each([
+    ["GH_TOKEN=$(cat other.token) gh repo list"],
+    ["GH_TOKEN=`cat other.token` gh repo list"],
+    ['GH_TOKEN="$OTHER" gh repo list'],
+    ["GH_TOKEN=${OTHER} gh repo list"],
+    ["export GH_TOKEN=$(cat other.token); gh repo list"],
+    ["$env:GH_TOKEN = (Get-Content other.token); gh repo list"],
+  ])("marks a value it can't know in advance as unknown: %j", (cmd) => {
+    expect(find(cmd).find((c) => c.bin === "gh")!.env).toEqual({ GH_TOKEN: UNKNOWN_VALUE });
+  });
+
+  it("keeps a single-quoted $ literal", () => {
+    expect(one("GH_HOST='$literal' gh repo list").env).toEqual({ GH_HOST: "$literal" });
+  });
+});
+
+describe("envFor (#86)", () => {
+  const base = { AWS_PROFILE: "default", HOME: "/h" };
+
+  it("applies plain assignments only to names already exported, then unsets, then exports", () => {
+    expect(envFor(base, { bin: "aws", args: [], env: {}, ifExported: { AWS_PROFILE: "x", NOT_EXPORTED: "y" } })).toEqual({
+      AWS_PROFILE: "x",
+      HOME: "/h",
+    });
+    expect(envFor(base, { bin: "aws", args: [], env: {}, unset: ["AWS_PROFILE"] })).toEqual({ HOME: "/h" });
+    expect(envFor(base, { bin: "aws", args: [], env: { AWS_PROFILE: "z" }, unset: ["AWS_PROFILE"] })).toEqual({
+      AWS_PROFILE: "z",
+      HOME: "/h",
+    });
+  });
+
+  it("never lets the line set CLOUDPIN_SKIP, CLOUDPIN_CONFIRM or CLOUDPIN_ENV for an agent", () => {
+    const inv = { bin: "aws", args: [], env: { CLOUDPIN_SKIP: "1" }, ifExported: { CLOUDPIN_ENV: "dev" }, unset: ["CLOUDPIN_ENV"] };
+    expect(envFor({ CLOUDPIN_ENV: "prod" }, inv, { agent: true })).toEqual({ CLOUDPIN_ENV: "prod" });
   });
 });
