@@ -5,21 +5,6 @@ issues it ships. Dates are aims, not promises: a fix can go out in a patch relea
 slips moves to the next version with the reason in its issue. Open an
 [issue](https://github.com/paureis/cloudpin/issues) to vote for an idea or suggest one.
 
-## 0.4.x: early-tester fixes (week of 2026-10-12)
-
-Whatever the first outside testers find, fixed before 1.0. 0.4.1 and 0.4.2 shipped the fixes found before testing
-began (see Shipped).
-
-## 1.0.0: launch (target 2026-10-16)
-
-The `.cloudpin.yml` format is stable from 1.0 on. Everything that changes it shipped in 0.2.0 to 0.3.0.
-
-- **A week of real use** by the author and early testers, then 1.0.0 and the launch
-  ([#9](https://github.com/paureis/cloudpin/issues/9)).
-- **Tested inside every agent** ([#2](https://github.com/paureis/cloudpin/issues/2),
-  [#3](https://github.com/paureis/cloudpin/issues/3)): Cursor, Gemini CLI and Copilot CLI.
-- **Go-public checklist closed** ([#8](https://github.com/paureis/cloudpin/issues/8)).
-
 ## 1.1.0: Claude Code plugin and MCP server (target 2026-10-23)
 
 - **Claude Code plugin and MCP server** ([#15](https://github.com/paureis/cloudpin/issues/15)): one-click install,
@@ -62,6 +47,11 @@ An idea gets a version when work on it starts.
 
 ## Shipped
 
+- **1.0.0** (2026-10-15): the first stable release and the launch ([#9](https://github.com/paureis/cloudpin/issues/9)).
+  The `.cloudpin.yml` format is stable; Antigravity hooks ([#80](https://github.com/paureis/cloudpin/issues/80));
+  Copilot CLI, Antigravity and Cursor tested inside the agents ([#3](https://github.com/paureis/cloudpin/issues/3),
+  [#2](https://github.com/paureis/cloudpin/issues/2)); go-public checklist closed
+  ([#8](https://github.com/paureis/cloudpin/issues/8)).
 - **0.4.2** (2026-10-10): a clearer first run: `init`, `status` and `doctor` call a CLI you don't have "not
   installed" ([#75](https://github.com/paureis/cloudpin/issues/75)).
 - **0.4.1** (2026-10-09): bash and zsh wrappers that keep guarding when an alias of the CLI already exists, and warn

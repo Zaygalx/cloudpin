@@ -53,8 +53,10 @@ We found no popular standalone tool for per-project cloud account pinning.
   complete, to stop private-repo Actions minutes; it is now the bar for **1.0.0** instead. Personal details were
   removed first: a fresh repository with the history rewritten (author emails, paths), the session notes
   (`HANDOFF.md`) kept local, and the original repository archived privately.
-- Before 1.0.0, all of these:
+- 1.0.0 (2026-10-15) shipped after all of these:
   1. Every CLI and every supported agent tested on real accounts (Windows), with the nightly Windows run green.
+     Two exceptions, labelled as such in the README: Wrangler (no Cloudflare account yet, #56) and Gemini CLI (paid
+     keys and enterprise only since 2026-06-18; its successor Antigravity is tested).
   2. About a week of the owner using it on real projects.
   3. Safety review: read-only, no token output, switching never blocked.
   4. README with a short animated demo, one-line install, clean uninstall, and the origin story.

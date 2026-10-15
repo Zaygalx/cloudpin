@@ -36,14 +36,15 @@ npx cloudpin --help
 
 </details>
 
-Requires Node.js 22 or later. Works on Windows, macOS and Linux. cloudpin is in public beta (0.x): it works and
-is tested, and [feedback before 1.0](https://github.com/paureis/cloudpin/issues/new/choose) is very welcome.
+Requires Node.js 22 or later. Works on Windows, macOS and Linux. The `.cloudpin.yml` format is stable from 1.0 on
+(see Configuration), and [feedback](https://github.com/paureis/cloudpin/issues/new/choose) is very welcome.
 
-**Latest release: 0.4.2** (2026-10-10): `init`, `status` and `doctor` call a CLI you don't have "not installed"
-instead of asking you to log in to it. 0.4.1 kept the bash and zsh wrappers guarding when you already have an alias
-for a guarded CLI, and a `.cloudpin.yml` written for a newer cloudpin now says to update. 0.4.0 made every release a GitHub Release with a signed build-provenance attestation (see
-[SECURITY.md](SECURITY.md), Verifying a release); 0.3.x brought the update notice, Supabase, Cloudflare Wrangler,
-`cloudpin doctor` and `cloudpin explain`. See the [CHANGELOG](CHANGELOG.md).
+**Latest release: 1.0.0** (2026-10-15): the first stable release. Antigravity, Gemini CLI's successor, joins the
+supported agents, and the Claude Code, Codex, Cursor, Copilot CLI and Antigravity hooks are all tested inside the real
+agents. Variables an agent sets earlier in its command line (`export AWS_PROFILE=...; aws ...`) now count, and
+commands on your Cursor allowlist run again when the account matches. Since 0.4: shell wrappers that keep guarding
+when you have an alias for a guarded CLI, "not installed" for CLIs you don't have, and signed GitHub Releases with
+build provenance (see [SECURITY.md](SECURITY.md), Verifying a release). See the [CHANGELOG](CHANGELOG.md).
 
 ## Quick start
 
