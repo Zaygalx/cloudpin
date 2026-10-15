@@ -62,6 +62,15 @@ The source layout is the table in `AGENTS.md`. `src/exec.ts` is the only place t
 - Targets are aims, not promises: a fix may ship in an unplanned patch release (x.y.z+1), and an item that slips moves
   to the next version with the reason written in its issue.
 
+## How work runs (owner decision, 2026-10-15)
+
+- The session is the orchestrator. Work that changes code or tests, or more than about three files, goes to one
+  subagent at a time (Agent tool, `model: "opus"`) with a complete brief: the issue, the files, what done means and
+  the rules here that apply. It commits on the issue branch, never pushes, and returns a question when blocked.
+- The orchestrator keeps trivial edits, every GitHub write (push, PR, merge, tag), releases and owner questions.
+- Verify with evidence, never the report: read the diff, re-run typecheck and tests, run the controls the rules ask for.
+- Sort findings by CONTRIBUTING.md "Reviewing a change": one review round and one fix round, then stop.
+
 ## Commits
 
 - Small commits, one concern each. Write the message to a file and use `git commit -F <file>`

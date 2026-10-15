@@ -9,6 +9,8 @@ slips moves to the next version with the reason in its issue. Open an
 
 - **Claude Code plugin and MCP server** ([#15](https://github.com/paureis/cloudpin/issues/15)): one-click install,
   and read-only tools agents can call to check the account before acting.
+- **Review rules** ([#88](https://github.com/paureis/cloudpin/issues/88)): how findings are sorted and when a review
+  ends, in CONTRIBUTING.md.
 
 ## 1.2.0: GitHub Action (target 2026-10-30)
 

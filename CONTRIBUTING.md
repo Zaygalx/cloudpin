@@ -70,6 +70,27 @@ reason. `cacheInputs` must list every variable and file that can change the answ
 - Run `npm run typecheck` and `npm test` before pushing.
 - Add a line to `CHANGELOG.md` under "Unreleased".
 
+## Reviewing a change
+
+A review finding names a failure: this input, this wrong result. Without one it is a preference, and the change
+doesn't wait for it. Findings are sorted by what they break:
+
+| Kind | For example | What happens |
+|---|---|---|
+| Must fix | a command runs on the wrong account (also when cloudpin can't tell); a credential is printed, logged or cached; a test sends a write to a real account; install or the user's shell breaks; a test or the type-check fails | fixed before merging |
+| Fix if cheap | a false block; a wrong or misleading message; new behaviour without a test; a doc the change made untrue | fixed in the same pull request when it is small and in the changed lines; otherwise an issue |
+| Leave | style, naming, refactors, checks for states that can't happen, anything outside the change | not changed; a real bug outside the change gets its own issue |
+
+Weigh the fix as well as the problem. A small fix in the code that decides (`src/guard.ts`, `src/shellwords.ts`, a
+provider's `resolve`) can break more than it repairs; if the problem is minor, open an issue instead.
+
+So reviews end:
+
+- every fix comes with a test that fails without it;
+- the second look covers only the fix, not the whole change again;
+- one review round and one fix round. If the second look finds something new, a must-fix goes to the maintainer and
+  anything else becomes an issue.
+
 ## Reporting a bug
 
 Open an [issue](https://github.com/paureis/cloudpin/issues/new/choose) with the command, what you expected, and
