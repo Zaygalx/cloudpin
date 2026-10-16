@@ -5,12 +5,13 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { cachedExec } from "./cache.js";
+import { checkExitCode, formatCheckText, parseCheckArgs, runCheck } from "./check.js";
 import { doctorJson, formatDoctor, runDoctor } from "./doctor.js";
 import { explain, formatExplain } from "./explain.js";
 import { createHandler, serve } from "./mcp.js";
 import { cloudpinTools } from "./mcp-tools.js";
 import { confirmProtected } from "./confirm.js";
-import { CONFIG_FILE, ConfigError, findConfig, PROVIDERS } from "./config.js";
+import { CONFIG_FILE, ConfigError, findConfig } from "./config.js";
 import { realExec } from "./exec.js";
 import { formatBlock } from "./format.js";
 import { guard, type GuardDeps } from "./guard.js";
@@ -34,7 +35,10 @@ Usage:
   cloudpin init [--env <name> [--protected]] [--yes] [--force]
                               Pin the accounts you are logged into now, in ./.cloudpin.yml
                               (--env adds them as one environment of the file)
-  cloudpin check              Check every CLI pinned in the nearest .cloudpin.yml
+  cloudpin check [--only <clouds>] [--json]
+                              Check every CLI pinned in the nearest .cloudpin.yml
+                              (--only azure,aws: just these, each must be installed and logged in;
+                              --json: the result as JSON, for CI)
   cloudpin status [--json]    Show each CLI's active account, the pins here, and installed hooks
   cloudpin explain [--json] [--agent] -- <cmd...>
                               What cloudpin would decide for a command, and why, without running it
@@ -117,59 +121,23 @@ async function init(flags: string[]): Promise<number> {
   return 0;
 }
 
-async function check(): Promise<number> {
-  let config;
-  try {
-    config = findConfig(process.cwd());
-  } catch (err) {
-    if (err instanceof ConfigError) {
-      console.error(`cloudpin: invalid config: ${err.message}`);
-      return 1;
-    }
-    throw err;
+const CHECK_USAGE = "usage: cloudpin check [--only <clouds>] [--json]";
+
+async function check(args: string[]): Promise<number> {
+  const parsed = parseCheckArgs(args);
+  if ("error" in parsed) {
+    console.error(`cloudpin check: ${parsed.error}\n${CHECK_USAGE}`);
+    return 1;
   }
-  if (!config) {
-    console.log("cloudpin: no .cloudpin.yml found here or in any parent folder; nothing is pinned.");
-    return 0;
+  const report = await runCheck(process.cwd(), process.env, deps, parsed.only ? { only: parsed.only } : {});
+  if (parsed.json) {
+    // stdout carries the JSON and nothing else.
+    console.log(JSON.stringify(report, null, 2));
+    return checkExitCode(report);
   }
-  console.log(`cloudpin: checking ${config.path}`);
-  if (config.environment) {
-    const { name, source } = config.environment;
-    console.log(`  environment: ${name}${config.environment.protected ? " (protected)" : ""}, chosen by ${source}`);
-  }
-  let ok = true;
-  for (const name of PROVIDERS) {
-    if (!config.pins[name]) continue;
-    const provider = providers.find((p) => p.name === name);
-    if (!provider) {
-      console.log(`  ? ${name}: pinned, but not supported by this version of cloudpin yet`);
-      ok = false;
-      continue;
-    }
-    // "agent" mode so CLOUDPIN_SKIP cannot make a check report success.
-    const verdict = await guard(
-      { bin: provider.bins[0]!, args: [], env: process.env, cwd: process.cwd(), mode: "agent" },
-      deps,
-    );
-    if (verdict.action === "allow" && verdict.reason === "not-installed") {
-      console.log(`  -  ${name}: ${provider.bins[0]} is not installed here, nothing to check`);
-    } else if (verdict.action === "allow" || verdict.action === "confirm") {
-      // "confirm" means the account matches on a protected environment.
-      console.log(`  ok ${name}: active account matches the pin`);
-    } else {
-      ok = false;
-      if (verdict.uncertain) {
-        console.log(`  x  ${name}: could not tell which account is active, so commands will be stopped`);
-        for (const problem of verdict.problems) console.log(`     - reason: ${problem}`);
-        if (verdict.fix) console.log(`     to see what is wrong: ${verdict.fix}`);
-      } else {
-        console.log(`  x  ${name}`);
-        for (const problem of verdict.problems) console.log(`     - ${problem}`);
-        if (verdict.fix) console.log(`     fix: ${verdict.fix}`);
-      }
-    }
-  }
-  return ok ? 0 : 1;
+  // An invalid pin file goes to stderr, as it always did.
+  for (const line of formatCheckText(report)) (report.error !== undefined ? console.error : console.log)(line);
+  return checkExitCode(report);
 }
 
 /** A file's text, or null if it can't be read. */
@@ -365,7 +333,7 @@ export async function main(argv: string[]): Promise<number> {
     case "init":
       return init(rest);
     case "check":
-      return check();
+      return check(rest);
     case "use": {
       const result = useCommand(rest, process.cwd(), process.env);
       for (const line of result.lines) (result.code === 0 ? console.log : console.error)(line);

@@ -6,6 +6,16 @@ All notable changes to cloudpin are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `cloudpin check --only <clouds>` and `--json` (#10): `--only azure,aws` checks just those clouds and fails one
+  that isn't pinned, installed or logged in, so a CI job checks what it deploys to; `--json` prints the result
+  (`match`, `mismatch`, `unpinned` or `error`) and each cloud's status, reason and fix, so tools never parse text.
+  Plain `cloudpin check` prints and exits as before.
+- `CLOUDPIN_BRANCH=<name>` (#10) picks the environment through the `branches` mapping when the checkout has no
+  branch, as in CI on pull requests and tags. `CLOUDPIN_ENV` and `cloudpin use` still win, and an agent can't set it
+  inside its own command.
+
 ## [1.1.0] - 2026-10-16
 
 Claude Code gets a one-step plugin, and any MCP agent can ask cloudpin before it acts.

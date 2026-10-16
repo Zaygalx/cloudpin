@@ -56,7 +56,7 @@ export function cloudpinTools(deps: GuardDeps, ctx: ToolContext): McpTool[] {
         const { command } = args;
         if (typeof command !== "string" || command.trim() === "") throw new Error("command must be a non-empty string");
         const cwd = folder(ctx, args.cwd);
-        // Agent mode, as in the hook: CLOUDPIN_SKIP, CLOUDPIN_CONFIRM and CLOUDPIN_ENV inside the command don't count.
+        // Agent mode, as in the hook: CLOUDPIN_SKIP, CLOUDPIN_CONFIRM, CLOUDPIN_ENV and CLOUDPIN_BRANCH inside the command don't count.
         return { mode: "agent", calls: await explain(command, { mode: "agent", cwd, env: ctx.env }, deps) };
       },
     },

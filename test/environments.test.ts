@@ -128,6 +128,35 @@ describe("selectEnvironment", () => {
   it("ignores an empty CLOUDPIN_ENV", () => {
     expect(selectEnvironment(project, { env: { CLOUDPIN_ENV: "" }, branch: "main" })).toMatchObject({ name: "production" });
   });
+
+  it("uses CLOUDPIN_BRANCH on a detached HEAD", () => {
+    expect(selectEnvironment(project, { env: { CLOUDPIN_BRANCH: "main" }, branch: null })).toMatchObject({
+      name: "production",
+      source: 'branch "main" (CLOUDPIN_BRANCH)',
+    });
+  });
+
+  it("CLOUDPIN_BRANCH beats the checked-out branch", () => {
+    expect(selectEnvironment(project, { env: { CLOUDPIN_BRANCH: "main" }, branch: "feature/x" })).toMatchObject({
+      name: "production",
+    });
+  });
+
+  it("CLOUDPIN_ENV and cloudpin use still win over CLOUDPIN_BRANCH", () => {
+    expect(selectEnvironment(project, { env: { CLOUDPIN_ENV: "staging", CLOUDPIN_BRANCH: "main" } })).toMatchObject({
+      name: "staging",
+    });
+    expect(selectEnvironment(project, { env: { CLOUDPIN_BRANCH: "main" }, chosen: "staging" })).toMatchObject({
+      name: "staging",
+    });
+  });
+
+  it("ignores an empty CLOUDPIN_BRANCH", () => {
+    expect(selectEnvironment(project, { env: { CLOUDPIN_BRANCH: "" }, branch: "main" })).toMatchObject({
+      name: "production",
+      source: 'branch "main"',
+    });
+  });
 });
 
 describe("git helpers", () => {

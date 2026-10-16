@@ -78,6 +78,11 @@ cloudpin use [<env> | --clear]
 # Check every pinned account; exit 1 on a mismatch (handy in CI and scripts)
 cloudpin check
 
+# Check only these clouds; each must be pinned, installed and logged in to the pinned account, so a CLI missing on
+# the runner fails instead of being skipped. --json prints the result for tools: an overall "result" (match,
+# mismatch, unpinned or error) and each cloud's status, reason and fix. Exit codes stay the same.
+cloudpin check --only azure,aws [--json]
+
 # See each CLI's active account, what this folder pins, and which agent hooks are installed (--json for tools)
 cloudpin status
 
@@ -199,7 +204,8 @@ read_only:         # optional: more commands that never need confirmation
 
 1. `CLOUDPIN_ENV=<name>` in the environment.
 2. `cloudpin use <name>`: remembered for this clone, inside `.git`, so it is never committed.
-3. The `branches` mapping for the checked-out branch: an exact name first, then the first matching pattern.
+3. The `branches` mapping for the checked-out branch (or for `CLOUDPIN_BRANCH=<name>`, e.g. in CI on a detached
+   checkout): an exact name first, then the first matching pattern.
 4. The first environment listed.
 
 An unknown name is an error, so the command is stopped rather than checked against the wrong pins. `cloudpin
@@ -303,6 +309,7 @@ you. It has two tools, and neither runs, switches or changes anything:
 |---|---|
 | `CLOUDPIN_SKIP=1` | Run one command without the check (terminal only; ignored for agents) |
 | `CLOUDPIN_ENV=<name>` | Use this environment (see Environments) |
+| `CLOUDPIN_BRANCH=<name>` | Use this branch for the branches mapping, e.g. in CI on a detached checkout (ignored for agents) |
 | `CLOUDPIN_CONFIRM=<name>` | Confirm changing commands on this protected environment without a prompt (terminal and CI only; ignored for agents) |
 | `CLOUDPIN_NO_CACHE=1` | Always ask the CLI instead of using the identity cache |
 | `CLOUDPIN_CACHE_DIR` | Where the identity cache (and the time of the last update check) lives |
@@ -344,8 +351,13 @@ problem.
 Inside one, the first check costs one identity call, and later checks come from the cache.
 
 **What if a CLI isn't installed?** A pinned CLI that isn't installed is skipped; the command would fail on its own.
+`cloudpin check --only` is the exception: a cloud it lists must be installed.
 
 **Can I use it in CI?** Yes. Run `cloudpin check` before deploying; it exits 1 if any pinned account doesn't match.
+Hosted runners come with several cloud CLIs preinstalled, so name the clouds the job deploys to with
+`cloudpin check --only azure,aws`: each listed cloud must then be installed and logged in to the pinned account.
+On a pull request or tag the checkout has no branch; set `CLOUDPIN_BRANCH` (for example from `GITHUB_HEAD_REF`) so
+the `branches` mapping still picks the right environment.
 
 **Why block when it can't tell?** Because "probably the right account" is the situation cloudpin exists to prevent.
 The message tells you exactly why it couldn't tell.

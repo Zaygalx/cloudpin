@@ -31,6 +31,7 @@ Run the type-check and the tests as separate commands and read each exit code.
 | `src/confirm.ts`, `src/use.ts` | The terminal confirmation and `cloudpin use` |
 | `src/providers/` | One file per CLI, implementing `ProviderDef` from `src/types.ts` |
 | `src/guard.ts` | The allow-or-block decision |
+| `src/check.ts` | `cloudpin check`: the report behind it, its text and JSON output, and `--only` |
 | `src/status.ts`, `src/doctor.ts` | `cloudpin status` and `cloudpin doctor` (read-only overviews) |
 | `src/explain.ts` | `cloudpin explain`: a verdict and its reasons, from guard's `Trace` |
 | `src/mcp.ts`, `src/mcp-tools.ts` | `cloudpin mcp`: the JSON-RPC stdio server, and its two read-only tools |

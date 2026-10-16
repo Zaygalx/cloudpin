@@ -193,4 +193,12 @@ describe("envFor (#86)", () => {
     const inv = { bin: "aws", args: [], env: { CLOUDPIN_SKIP: "1" }, ifExported: { CLOUDPIN_ENV: "dev" }, unset: ["CLOUDPIN_ENV"] };
     expect(envFor({ CLOUDPIN_ENV: "prod" }, inv, { agent: true })).toEqual({ CLOUDPIN_ENV: "prod" });
   });
+
+  it("never lets the line set CLOUDPIN_BRANCH for an agent (#10)", () => {
+    const [inv] = findInvocations("CLOUDPIN_BRANCH=main aws s3 ls", GUARDED);
+    expect(inv!.env).toEqual({ CLOUDPIN_BRANCH: "main" });
+    expect(envFor({ HOME: "/h" }, inv!, { agent: true })).toEqual({ HOME: "/h" });
+    // The user's own shell (not agent mode) may set it.
+    expect(envFor({ HOME: "/h" }, inv!)).toEqual({ HOME: "/h", CLOUDPIN_BRANCH: "main" });
+  });
 });
