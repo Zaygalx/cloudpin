@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { AgentName } from "./hooks/agents.js";
+import { AGENTS, type AgentName } from "./hooks/agents.js";
 import { home } from "./paths.js";
 import { providers } from "./providers/index.js";
 
@@ -31,6 +31,41 @@ export function hookFile(agent: AgentName, scope: Scope, root: string, env: Node
       // antigravity.google/docs/hooks: read by Antigravity CLI, IDE and 2.0 alike.
       return scope === "project" ? join(root, ".agents", "hooks.json") : join(home(env), ".gemini", "config", "hooks.json");
   }
+}
+
+// The plugin's id in `enabledPlugins`: plugin@marketplace (.claude-plugin/*.json in this repository).
+const CLAUDE_PLUGIN = "cloudpin@cloudpin";
+
+/**
+ * True when the cloudpin Claude Code plugin is enabled in the user, project or
+ * local settings. Its hook then guards Claude Code, and Claude Code would run a
+ * settings copy of the same hook as well (code.claude.com/docs/en/hooks).
+ */
+export function claudePluginEnabled(read: (path: string) => string | null, cwd: string, env: NodeJS.ProcessEnv): boolean {
+  // Narrowest scope first, as Claude Code applies them: the first file that
+  // mentions the plugin decides, so a project's `false` beats the user's `true`.
+  // Managed settings and --plugin-dir are out of reach and not considered.
+  const files = [join(cwd, ".claude", "settings.local.json"), hookFile("claude", "project", cwd, env), hookFile("claude", "user", cwd, env)];
+  for (const file of files) {
+    let plugins: Record<string, unknown> | undefined;
+    try {
+      plugins = (JSON.parse(read(file) ?? "{}") as { enabledPlugins?: Record<string, unknown> }).enabledPlugins;
+    } catch {
+      continue; // A settings file Claude Code can't read either.
+    }
+    if (plugins && Object.hasOwn(plugins, CLAUDE_PLUGIN)) return plugins[CLAUDE_PLUGIN] === true;
+  }
+  return false;
+}
+
+/** The installed agent hooks, as `cloudpin status` names them: "claude (project)", "codex (personal)", ... */
+export function installedHooks(read: (path: string) => string | null, cwd: string, env: NodeJS.ProcessEnv): string[] {
+  const hooks = (Object.keys(AGENTS) as AgentName[]).flatMap((agent) =>
+    (["project", "user"] as const)
+      .filter((scope) => read(hookFile(agent, scope, cwd, env))?.includes(command(agent)))
+      .map((scope) => `${agent} (${scope === "user" ? "personal" : "project"})`),
+  );
+  return claudePluginEnabled(read, cwd, env) ? ["claude (plugin)", ...hooks] : hooks;
 }
 
 // Antigravity's hooks.json maps hook names to events, so cloudpin owns one named entry.

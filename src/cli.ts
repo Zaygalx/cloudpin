@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import spawn from "cross-spawn";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { cachedExec } from "./cache.js";
 import { doctorJson, formatDoctor, runDoctor } from "./doctor.js";
 import { explain, formatExplain } from "./explain.js";
+import { createHandler, serve } from "./mcp.js";
+import { cloudpinTools } from "./mcp-tools.js";
 import { confirmProtected } from "./confirm.js";
 import { CONFIG_FILE, ConfigError, findConfig, PROVIDERS } from "./config.js";
 import { realExec } from "./exec.js";
@@ -15,7 +17,7 @@ import { guard, type GuardDeps } from "./guard.js";
 import { AGENTS, runHook, type AgentName } from "./hooks/agents.js";
 import { flagValue } from "./args.js";
 import { addEnvironment, discover, renderConfig, type FoundIdentity } from "./init.js";
-import { hookFile, planInstall, planUninstall } from "./install.js";
+import { claudePluginEnabled, hookFile, installedHooks, planInstall, planUninstall } from "./install.js";
 import { cacheDir, findOnPath } from "./paths.js";
 import { shellInit } from "./shell-init.js";
 import { buildStatus, collectStatus } from "./status.js";
@@ -37,6 +39,7 @@ Usage:
   cloudpin explain [--json] [--agent] -- <cmd...>
                               What cloudpin would decide for a command, and why, without running it
                               (one quoted argument is read as a full shell line; --agent: as an agent hook)
+  cloudpin mcp                Read-only MCP server for agents (stdio): cloudpin_status, cloudpin_check
   cloudpin doctor [--json]    Check the whole setup (PATH, shell, hooks, pins, CLIs) and say what to fix
                               (--json is safe to paste in a bug report)
   cloudpin use [<env> | --clear]
@@ -169,7 +172,18 @@ async function check(): Promise<number> {
   return ok ? 0 : 1;
 }
 
-const version = () => (createRequire(import.meta.url)("../package.json") as { version: string }).version;
+/** A file's text, or null if it can't be read. */
+const readOrNull = (path: string): string | null => {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+};
+
+const isDir = (path: string): boolean => statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
+
+const version =() => (createRequire(import.meta.url)("../package.json") as { version: string }).version;
 
 /** True if cloudpin can create and remove a file in `dir` (its own cache folder). */
 function writable(dir: string): boolean {
@@ -216,13 +230,7 @@ async function doctor(flags: string[]): Promise<number> {
     version: version(),
     self: process.argv[1] ?? "",
     node: process.versions.node,
-    read: (path: string) => {
-      try {
-        return readFileSync(path, "utf8");
-      } catch {
-        return null;
-      }
-    },
+    read: readOrNull,
     writable,
     onPath: (name: string) => onPath(name, process.env),
     latest: () => fetchLatest(fetch, 3000),
@@ -295,6 +303,11 @@ async function hookSetup(action: "install" | "uninstall", agent: string | undefi
   const existing = existsSync(path) ? readFileSync(path, "utf8") : null;
   try {
     if (action === "install") {
+      // The plugin's hook and a settings copy would both run (code.claude.com/docs/en/hooks).
+      if (name === "claude" && claudePluginEnabled(readOrNull, process.cwd(), process.env)) {
+        console.log("cloudpin: the cloudpin plugin already guards Claude Code here; uninstall the plugin first if you want the settings hook instead.");
+        return 0;
+      }
       const plan = planInstall(name, existing);
       if (plan.alreadyInstalled) {
         console.log(`cloudpin: the ${name} hook is already in ${path}`);
@@ -363,15 +376,7 @@ export async function main(argv: string[]): Promise<number> {
     case "hook":
       return hook(rest[0]);
     case "status": {
-      const hooks = () =>
-        (Object.keys(AGENTS) as AgentName[]).flatMap((agent) =>
-          (["project", "user"] as const)
-            .filter((scope) => {
-              const file = hookFile(agent, scope, process.cwd(), process.env);
-              return existsSync(file) && readFileSync(file, "utf8").includes(`cloudpin hook ${agent}`);
-            })
-            .map((scope) => `${agent} (${scope === "user" ? "personal" : "project"})`),
-        );
+      const hooks = () => installedHooks(readOrNull, process.cwd(), process.env);
       if (rest.includes("--json")) {
         console.log(JSON.stringify(await collectStatus(cachedDeps, process.cwd(), process.env, hooks), null, 2));
         return 0;
@@ -381,6 +386,12 @@ export async function main(argv: string[]): Promise<number> {
     }
     case "explain":
       return explainCommand(rest);
+    case "mcp": {
+      // Fresh answers (no identity cache), like check and explain. stdout carries only JSON-RPC lines.
+      const tools = cloudpinTools(deps, { cwd: process.cwd(), env: process.env, read: readOrNull, isDir });
+      await serve(createHandler({ version: version(), tools }), process.stdin, process.stdout);
+      return 0;
+    }
     case "doctor":
       return doctor(rest);
     case "install-hook":

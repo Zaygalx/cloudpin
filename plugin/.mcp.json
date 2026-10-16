@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "cloudpin": { "command": "cloudpin", "args": ["mcp"] }
+  }
+}

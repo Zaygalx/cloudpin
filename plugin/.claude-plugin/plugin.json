@@ -1,0 +1,10 @@
+{
+  "name": "cloudpin",
+  "version": "1.0.0",
+  "description": "Stops Claude Code from running cloud CLI commands (az, aws, gcloud, vercel, gh, kubectl, helm, supabase, wrangler) on the wrong account, and gives it read-only tools to check first. Needs cloudpin installed: npm install --global cloudpin.",
+  "author": { "name": "Alvaro Reis" },
+  "homepage": "https://github.com/paureis/cloudpin",
+  "repository": "https://github.com/paureis/cloudpin",
+  "license": "MIT",
+  "keywords": ["cloud", "security", "guardrails", "azure", "aws", "gcloud", "vercel", "kubernetes", "supabase", "cloudflare"]
+}

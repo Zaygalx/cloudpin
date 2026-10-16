@@ -274,6 +274,29 @@ cloudpin reads the whole command line the agent is about to run, so it also catc
 (`GH_TOKEN=$(cat file) gh ...`), the command is stopped with the reason. It can't see inside a script file the agent
 writes and runs later (`bash deploy.sh`).
 
+### Claude Code plugin
+
+One install gives Claude Code the hook, two read-only tools it can call before acting, and a short skill telling it to
+check first and to stop and ask you when cloudpin blocks a command. cloudpin itself must be installed first:
+
+```sh
+npm install --global cloudpin
+claude plugin install cloudpin --marketplace paureis/cloudpin
+```
+
+The plugin replaces `cloudpin install-hook claude`: with the plugin enabled, `install-hook claude` declines, and
+`cloudpin doctor` warns if both are present (Claude Code would run both).
+
+### MCP server
+
+`cloudpin mcp` is a read-only MCP server (stdio) for any agent that supports MCP. The Claude Code plugin starts it for
+you. It has two tools, and neither runs, switches or changes anything:
+
+| Tool | Answers |
+|---|---|
+| `cloudpin_status` | which account each CLI is using here, what the project pins, which environment applies, which hooks are installed (the same as `cloudpin status --json`) |
+| `cloudpin_check` | would cloudpin allow this command line, as an agent's: each call, the account it would use and why, and the verdict with its reason and fix (the same as `cloudpin explain --agent --json`) |
+
 ## Configuration
 
 | Variable | Effect |

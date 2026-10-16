@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { GuardDeps } from "./guard.js";
 import { AGENTS, type AgentName } from "./hooks/agents.js";
-import { hookFile, planInstall, type Scope } from "./install.js";
+import { claudePluginEnabled, hookFile, planInstall, type Scope } from "./install.js";
 import { cacheDir, home } from "./paths.js";
 import { collectStatus, describe } from "./status.js";
 import { isNewer, updateCheckAllowed } from "./update.js";
@@ -193,6 +193,20 @@ function hookChecks(d: DoctorDeps): Check[] {
               fix: install,
             },
       );
+    }
+  }
+  if (claudePluginEnabled(d.read, d.cwd, d.env)) {
+    checks.unshift({ id: "hook", level: "ok", title: "claude plugin: enabled (it guards Claude Code)" });
+    for (const scope of ["project", "user"] as Scope[]) {
+      if (!d.read(hookFile("claude", scope, d.cwd, d.env))?.includes("cloudpin hook claude")) continue;
+      const where = scope === "user" ? "personal" : "project";
+      checks.push({
+        id: "hook-twice",
+        level: "warn",
+        title: `claude: the cloudpin plugin and a ${where} settings hook both guard Claude Code`,
+        detail: ["Claude Code runs both, so every command is checked twice"],
+        fix: `cloudpin uninstall-hook claude${scope === "user" ? " --user" : ""}`,
+      });
     }
   }
   if (checks.length === 0) {

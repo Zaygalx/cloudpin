@@ -6,6 +6,14 @@ All notable changes to cloudpin are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A Claude Code plugin (#15): `claude plugin install cloudpin --marketplace paureis/cloudpin` installs the hook, a
+  read-only MCP server and a skill that tells the agent to check first and stop on a block. With the plugin enabled,
+  `install-hook claude` declines and `doctor` warns if a settings hook would also run.
+- `cloudpin mcp` (#15): a read-only MCP server (stdio) with `cloudpin_status` and `cloudpin_check`, for any agent that
+  supports MCP. No new dependency.
+
 ## [1.0.0] - 2026-10-15
 
 The first stable release: the `.cloudpin.yml` format is stable from here on (later versions only add sections and

@@ -1,0 +1,11 @@
+{
+  "name": "cloudpin",
+  "owner": { "name": "Alvaro Reis" },
+  "plugins": [
+    {
+      "name": "cloudpin",
+      "source": "./plugin",
+      "description": "Stops Claude Code from running cloud CLI commands on the wrong account, with read-only tools to check first."
+    }
+  ]
+}

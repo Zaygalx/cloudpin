@@ -336,3 +336,21 @@ describe("findOnPath", () => {
     expect(findOnPath("cloudpin", {}, "linux", exists)).toBeNull();
   });
 });
+
+describe("runDoctor: the Claude Code plugin", () => {
+  const enabled = JSON.stringify({ enabledPlugins: { "cloudpin@cloudpin": true } });
+  const userSettings = join(HOME, ".claude", "settings.json");
+
+  it("is ok on its own", async () => {
+    const hooks = byId(await runDoctor(deps({ files: { [userSettings]: enabled } })), "hook");
+    expect(hooks).toEqual([expect.objectContaining({ level: "ok", title: expect.stringMatching(/claude plugin/) })]);
+  });
+
+  it("warns when a settings hook also guards Claude Code, since both would run", async () => {
+    const settings = JSON.parse(planInstall("claude", null).content);
+    const files = { [userSettings]: JSON.stringify({ ...settings, enabledPlugins: { "cloudpin@cloudpin": true } }) };
+    const twice = one(await runDoctor(deps({ files })), "hook-twice");
+    expect(twice.level).toBe("warn");
+    expect(twice.fix).toBe("cloudpin uninstall-hook claude --user");
+  });
+});
