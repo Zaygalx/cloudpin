@@ -364,6 +364,7 @@ before opening a pull request.
 
 Made by [Alvaro Reis](https://github.com/paureis) ([LinkedIn](https://www.linkedin.com/in/alpaureis)), with Claude
 Code as a pair programmer. Every behaviour is covered by tests, and every CLI integration is checked against the
-tool's own documentation and the real CLI.
+tool's own documentation and the real CLI. Why it exists: [5 ways your cloud CLI picks the wrong account without
+telling you](https://dev.to/paureis/5-ways-your-cloud-cli-picks-the-wrong-account-without-telling-you-19e2).
 
 [MIT](LICENSE)
