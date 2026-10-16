@@ -1,28 +1,31 @@
 # Roadmap
 
-Each version below is a [milestone](https://github.com/paureis/cloudpin/milestones) with a target date and the
-issues it ships. Dates are aims, not promises: a fix can go out in a patch release at any time, and anything that
-slips moves to the next version with the reason in its issue. Open an
-[issue](https://github.com/paureis/cloudpin/issues) to vote for an idea or suggest one.
+Each version below is a [milestone](https://github.com/paureis/cloudpin/milestones) with a release date and the
+issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to vote for an idea or suggest one.
 
-## 1.2.0: GitHub Action (target 2026-10-30)
+## How releases work
+
+- **Minor releases** (1.2.0, 1.3.0, ...) come out on a Thursday, at least three weeks apart, each with a theme.
+  The dates are checkpoints: work runs ahead of them, and if a release isn't ready, it slips a week.
+- **In the last week before a release**, only that release's items are merged, and the maintainer uses that build
+  every day. Work on the next version carries on in its own pull requests and is merged after the release.
+- **Patch releases** (1.2.1, ...) go out at any time, but only for bugs that must be fixed: a command allowed on the
+  wrong account, a credential exposed, a broken install. Smaller fixes wait for the next minor release.
+- Anything that misses its release moves to the next one, with the reason in its issue.
+- Once new features slow down, cloudpin moves to maintenance: a release when there is something worth releasing.
+
+## 1.2.0: Run it everywhere (release 2026-11-05)
 
 - **GitHub Action** ([#10](https://github.com/paureis/cloudpin/issues/10)): `cloudpin check` before deploy jobs.
+- **Homebrew** ([#16](https://github.com/paureis/cloudpin/issues/16)), **Scoop and winget**
+  ([#17](https://github.com/paureis/cloudpin/issues/17)).
 - **Threat model** ([#84](https://github.com/paureis/cloudpin/issues/84)): what cloudpin protects against and what it
   doesn't, in THREAT_MODEL.md.
 
-## 1.3.0: installers (target 2026-11-06)
-
-- **Homebrew** ([#16](https://github.com/paureis/cloudpin/issues/16)), **Scoop and winget**
-  ([#17](https://github.com/paureis/cloudpin/issues/17)).
-
-## 1.4.0: `cloudpin switch` (target 2026-11-13)
+## 1.3.0: Fix it, see it (release 2026-12-03)
 
 - **`cloudpin switch`** ([#14](https://github.com/paureis/cloudpin/issues/14)): move every CLI to the pinned
   accounts in one go, after one confirmation.
-
-## 1.5.0: editor status bar (target 2026-11-20)
-
 - **VS Code / Cursor status bar** ([#18](https://github.com/paureis/cloudpin/issues/18)): a green or red pin
   showing whether the active accounts match the project.
 

@@ -61,6 +61,10 @@ The source layout is the table in `AGENTS.md`. `src/exec.ts` is the only place t
   idea gets a version when work on it starts. New work found mid-session gets a version before it is started.
 - Targets are aims, not promises: a fix may ship in an unplanned patch release (x.y.z+1), and an item that slips moves
   to the next version with the reason written in its issue.
+- **Release rhythm** (owner decision, 2026-10-16; ROADMAP "How releases work"): minor releases on a Thursday, at
+  least three weeks apart, each a themed milestone; the dates are checkpoints, and work runs ahead of them every day.
+  In the week before a release only its items merge to `main` (refresh the owner's copy with `dogfood.mjs install`);
+  next-version PRs stay open and green and merge after the tag. Patch releases only for must-fix bugs.
 
 ## How work runs (owner decision, 2026-10-15)
 
