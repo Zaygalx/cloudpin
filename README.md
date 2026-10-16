@@ -39,12 +39,12 @@ npx cloudpin --help
 Requires Node.js 22 or later. Works on Windows, macOS and Linux. The `.cloudpin.yml` format is stable from 1.0 on
 (see Configuration), and [feedback](https://github.com/paureis/cloudpin/issues/new/choose) is very welcome.
 
-**Latest release: 1.0.0** (2026-10-15): the first stable release. Antigravity, Gemini CLI's successor, joins the
-supported agents, and the Claude Code, Codex, Cursor, Copilot CLI and Antigravity hooks are all tested inside the real
-agents. Variables an agent sets earlier in its command line (`export AWS_PROFILE=...; aws ...`) now count, and
-commands on your Cursor allowlist run again when the account matches. Since 0.4: shell wrappers that keep guarding
-when you have an alias for a guarded CLI, "not installed" for CLIs you don't have, and signed GitHub Releases with
-build provenance (see [SECURITY.md](SECURITY.md), Verifying a release). See the [CHANGELOG](CHANGELOG.md).
+**Latest release: 1.1.0** (2026-10-16): a Claude Code plugin. `claude plugin install cloudpin --marketplace
+paureis/cloudpin` gives Claude Code the hook, a read-only MCP server and a skill that tells it to check first and to
+stop and ask you when a command is blocked (see Claude Code plugin). For any other agent that supports MCP,
+`cloudpin mcp` is the same read-only server: it reports the accounts in use and whether a command would be allowed,
+and never runs or changes anything (see MCP server and the [CHANGELOG](CHANGELOG.md)). 1.0 made the
+`.cloudpin.yml` format stable.
 
 ## Quick start
 

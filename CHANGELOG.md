@@ -6,6 +6,10 @@ All notable changes to cloudpin are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-16
+
+Claude Code gets a one-step plugin, and any MCP agent can ask cloudpin before it acts.
+
 ### Added
 
 - A Claude Code plugin (#15): `claude plugin install cloudpin --marketplace paureis/cloudpin` installs the hook, a

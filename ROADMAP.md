@@ -5,16 +5,11 @@ issues it ships. Dates are aims, not promises: a fix can go out in a patch relea
 slips moves to the next version with the reason in its issue. Open an
 [issue](https://github.com/paureis/cloudpin/issues) to vote for an idea or suggest one.
 
-## 1.1.0: Claude Code plugin and MCP server (target 2026-10-23)
-
-- **Claude Code plugin and MCP server** ([#15](https://github.com/paureis/cloudpin/issues/15)): one-click install,
-  and read-only tools agents can call to check the account before acting.
-- **Review rules** ([#88](https://github.com/paureis/cloudpin/issues/88)): how findings are sorted and when a review
-  ends, in CONTRIBUTING.md.
-
 ## 1.2.0: GitHub Action (target 2026-10-30)
 
 - **GitHub Action** ([#10](https://github.com/paureis/cloudpin/issues/10)): `cloudpin check` before deploy jobs.
+- **Threat model** ([#84](https://github.com/paureis/cloudpin/issues/84)): what cloudpin protects against and what it
+  doesn't, in THREAT_MODEL.md.
 
 ## 1.3.0: installers (target 2026-11-06)
 
@@ -49,6 +44,9 @@ An idea gets a version when work on it starts.
 
 ## Shipped
 
+- **1.1.0** (2026-10-16): the Claude Code plugin and read-only MCP server
+  ([#15](https://github.com/paureis/cloudpin/issues/15)); review rules in CONTRIBUTING.md
+  ([#88](https://github.com/paureis/cloudpin/issues/88)).
 - **1.0.0** (2026-10-15): the first stable release and the launch ([#9](https://github.com/paureis/cloudpin/issues/9)).
   The `.cloudpin.yml` format is stable; Antigravity hooks ([#80](https://github.com/paureis/cloudpin/issues/80));
   Copilot CLI, Antigravity and Cursor tested inside the agents ([#3](https://github.com/paureis/cloudpin/issues/3),
