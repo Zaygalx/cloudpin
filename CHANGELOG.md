@@ -25,9 +25,26 @@ All notable changes to cloudpin are listed here. The format follows
   and `^`). Like every install, it edits no shell profile and installs no agent hook.
 - Each GitHub Release also has `cloudpin-X.Y.Z-windows.zip` (#17), the file the Scoop bucket installs: the package's
   files plus their production `node_modules`, listed in `SHA256SUMS` and covered by the same signed attestation.
+- `cloudpin switch [--yes] [--json] [--only <clouds>]` (#14) switches each pinned CLI to its pinned account. It
+  shows a plan, asks once, runs each CLI's own switch command without a shell (`az account set`,
+  `gh auth switch --hostname --user`, `vercel teams switch <slug>`, `gcloud config set ... --quiet`,
+  `kubectl config use-context` and, for a pinned namespace, `set-context --current --namespace`), then checks again,
+  exiting 0 only when every pinned, installed CLI matches. A failing command doesn't stop the others. When several
+  kube contexts or AWS profiles fit, you pick one by number in a terminal. What it won't do is named for you: a missing
+  login, `supabase link`, a Wrangler config edit, or a variable that overrides the switch (`GH_TOKEN`,
+  `CLOUDSDK_CORE_PROJECT`, `AWS_ACCESS_KEY_ID`, `VERCEL_ORG_ID`, ...). AWS profiles are found in the AWS config file,
+  reading only profile names, `sso_account_id` and `role_arn` (never the credentials file). `--json` prints the plan,
+  the commands run with their exit codes, and the `check --json` report after, and never prompts. An agent's
+  `cloudpin switch` asks you first (agents whose hooks can't ask are told to ask you to run it).
+- `cloudpin shell-init` also defines a `cloudpin` function (#14), so `cloudpin switch` can set `AWS_PROFILE` in your
+  shell: it applies only an `AWS_PROFILE=<name>` line from a temporary file (never eval), and passes every other
+  command straight through.
 
 ### Changed
 
+- A blocked command's fix also suggests `cloudpin switch` (#14), except for Supabase and Wrangler. The guarded shell
+  functions now look for the cloudpin executable with `type -P` (bash) or `whence -p` (zsh), so the new `cloudpin`
+  function can't make them think cloudpin is still installed after an uninstall.
 - The update notice and `cloudpin doctor` name the upgrade command for the way cloudpin was installed (#16, #98):
   `brew upgrade cloudpin`, `scoop update cloudpin`, `pnpm add --global cloudpin`, `volta install cloudpin`,
   `yarn global add cloudpin` (Yarn classic) or `bun add --global cloudpin@latest`, otherwise

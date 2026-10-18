@@ -30,6 +30,7 @@ We found no popular standalone tool for per-project cloud account pinning.
 | Agents | Every agent with a real blocking pre-command hook (Claude Code, Cursor; Codex, Gemini CLI and Copilot CLI **(verify)**; Antigravity, Gemini CLI's successor, added for 1.0 in #80), via `cloudpin install-hook <agent>`. Agents without a blocking hook get documented `cloudpin check` integration, never a fake hook |
 | Block rule | On mismatch, block every command except login, logout, switch, whoami, `--version` and help |
 | Override | `CLOUDPIN_SKIP=1` works in the terminal; ignored in agent-hook mode |
+| Switching (#14, 2026-10-18) | `cloudpin switch` shows a plan, asks once (`--yes` skips it), runs each CLI's own switch command without a shell, then re-checks; logins, `supabase link`, Wrangler config edits and overriding env vars stay manual lines. An agent's `cloudpin switch` asks the human (deny where the hook can't ask). AWS_PROFILE reaches the user's shell through the `cloudpin` shell function's side file, never eval. Design: `docs/superpowers/specs/2026-10-18-switch-design.md` |
 | Scope | The full product at launch; iterate on issues afterwards |
 | License | MIT |
 | Authorship | Commits carry `Co-Authored-By: Claude`; the README says it was built with Claude Code as a pair programmer |
@@ -42,7 +43,8 @@ We found no popular standalone tool for per-project cloud account pinning.
 - A pinned CLI isn't installed: skip it.
 - A command picks the account itself (`--subscription`, `--profile`, `--scope`, `--project`, or env vars such
   as `AWS_PROFILE` / `CLOUDSDK_CORE_PROJECT`): check that account, not the default one.
-- cloudpin only ever reads identity, never prints tokens, and never logs in or changes accounts.
+- cloudpin only ever reads identity, never prints tokens, and never logs in. It changes accounts only when you run
+  `cloudpin switch` and confirm (an agent's attempt asks you first).
 - A pin file uses a section or key this version doesn't know: refuse it (fail closed, since it may be a typo that
   would leave a CLI unguarded) and say it may need a newer cloudpin, naming the running version (#67). From 1.0 the
   format only adds names, so this is how a teammate on an older version finds out.

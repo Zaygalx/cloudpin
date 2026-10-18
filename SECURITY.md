@@ -19,9 +19,14 @@ Examples of what counts as a security problem here:
   `vercel teams ls`, `gh api user`, `supabase projects list`, `wrangler whoami --json`) with the same flags and
   environment as your command, and reads the result. For Kubernetes, Supabase and Wrangler it also reads project
   files that name the target (the kubeconfig, `supabase/.temp/`, the Wrangler config and its account cache).
-- It never logs in, logs out or switches accounts, and never uses or stores a token or key. Credential files are not
-  read, with one exception: the kubeconfig, which can hold credentials next to the cluster list; cloudpin takes only
-  the server and namespace from it. For Vercel it checks whether a login file exists, without reading it.
+- It never logs in or logs out, and never uses or stores a token or key. It switches accounts only when you run
+  `cloudpin switch` and confirm (an agent's attempt asks you first); it then runs each CLI's own switch command
+  (`az account set`, `gh auth switch`, `vercel teams switch`, `gcloud config set`, `kubectl config use-context`)
+  without a shell, and only prints a login or `supabase link` for you to run. Credential files are not read, with two
+  exceptions: the kubeconfig, which can hold credentials next to the cluster list, from which cloudpin takes only the
+  server and namespace (and for `cloudpin switch` each context's name and cluster); and, for `cloudpin switch`, the
+  AWS config file, from which it takes only profile names, `sso_account_id` and `role_arn`, skipping every other line
+  (the AWS credentials file is never read). For Vercel it checks whether a login file exists, without reading it.
 - It stores successful identity answers for up to five minutes in a cache file in your user cache folder. Keys are
   salted hashes, so tokens and command arguments are never written in clear.
 - `cloudpin mcp`, the MCP server for agents, is read-only: its two tools report status and what cloudpin would decide

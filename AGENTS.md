@@ -32,6 +32,8 @@ Run the type-check and the tests as separate commands and read each exit code.
 | `src/providers/` | One file per CLI, implementing `ProviderDef` from `src/types.ts` |
 | `src/guard.ts` | The allow-or-block decision |
 | `src/check.ts` | `cloudpin check`: the report behind it, its text and JSON output, and `--only` |
+| `src/switch.ts`, `src/switch-plan.ts` | `cloudpin switch`: plan, confirm, run and re-check; the per-CLI planners |
+| `src/aws-config.ts` | Profile names and accounts from the AWS config file, for `cloudpin switch` (nothing else is kept) |
 | `src/status.ts`, `src/doctor.ts` | `cloudpin status` and `cloudpin doctor` (read-only overviews) |
 | `src/explain.ts` | `cloudpin explain`: a verdict and its reasons, from guard's `Trace` |
 | `src/mcp.ts`, `src/mcp-tools.ts` | `cloudpin mcp`: the JSON-RPC stdio server, and its two read-only tools |
