@@ -18,7 +18,7 @@ open and green until the 1.2.0 tag (2026-11-05) and merges after it, so 1.2.0's 
 | Testing | The exe built from the branch and run on Windows with a functional check and a wrong-pin control: locally, and in Nightly's existing Windows job | A check that cannot fail proves nothing |
 | winget identity | `PackageIdentifier: paureis.cloudpin`, `Publisher: paureis` | The repos' handle; no real name added anywhere new |
 | Manifests | Kept in paureis/cloudpin (`packaging/winget/`) and written by `scripts/bump-installers.mjs --winget` from the release's `SHA256SUMS` | One place generates every installer's version bump |
-| Submitting | The owner submits by hand: the first version (signing Microsoft's CLA once), then one `wingetcreate update` per minor release with the owner's own token, outside the session; no stored token | wingetcreate needs a classic `public_repo` PAT (fine-grained tokens still fail), which could write to every public repo of the owner's |
+| Submitting | The owner submits by hand, outside the session, with the owner's own token and none stored: one `wingetcreate submit` per release, first (signing Microsoft's CLA once) or later, of the manifests `bump-installers.mjs --winget` rendered after checking the zip against `SHA256SUMS` (docs/winget.md) | wingetcreate needs a classic `public_repo` PAT (fine-grained tokens still fail), which could write to every public repo of the owner's; `wingetcreate update` would download the zip and hash it itself, so it would not submit the checked manifest |
 
 ## Out of scope
 
