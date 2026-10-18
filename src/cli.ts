@@ -154,7 +154,7 @@ const isDir = (path: string): boolean => statSync(path, { throwIfNoEntry: false 
 
 const version =() => (createRequire(import.meta.url)("../package.json") as { version: string }).version;
 
-/** How this cloudpin was installed (npm, brew or scoop), from the real path of the running script. */
+/** How this cloudpin was installed (an InstallMethod: npm, brew, scoop or a package manager), from the running script's path, real and as run. */
 const installedWith = runningInstallMethod;
 
 /** True if cloudpin can create and remove a file in `dir` (its own cache folder). */

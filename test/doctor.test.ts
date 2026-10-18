@@ -157,6 +157,40 @@ describe("runDoctor: cloudpin itself", () => {
     expect(one(await runDoctor(at("")), "path").fix).toBe("scoop uninstall cloudpin, then scoop install cloudpin");
   });
 
+  // #98: each package manager's launcher on PATH, as each one writes it (src/install-method.ts cites the layouts).
+  const WIN_HOME = { USERPROFILE: "C:\\Users\\me", LOCALAPPDATA: "C:\\Users\\me\\AppData\\Local" };
+  it.each<[InstallMethod, NodeJS.Platform, string, Record<string, string>, string]>([
+    ["pnpm", "win32", "C:\\Users\\me\\AppData\\Local\\pnpm\\bin\\cloudpin.CMD", {}, "pnpm add --global cloudpin"],
+    ["pnpm", "linux", "/home/me/.local/share/pnpm/cloudpin", {}, "pnpm add --global cloudpin"],
+    ["volta", "win32", "C:\\Users\\me\\AppData\\Local\\Volta\\bin\\cloudpin.cmd", {}, "volta install cloudpin"],
+    ["volta", "darwin", "/Users/me/.volta/bin/cloudpin", { "/Users/me/.volta/bin/cloudpin": "/Users/me/.volta/bin/volta-shim" }, "volta install cloudpin"],
+    ["yarn", "win32", "C:\\Users\\me\\AppData\\Local\\Yarn\\bin\\cloudpin.cmd", {}, "yarn global add cloudpin"],
+    ["yarn", "linux", "/usr/local/bin/cloudpin", { "/usr/local/bin/cloudpin": "/home/me/.config/yarn/global/node_modules/cloudpin/dist/cli.js" }, "yarn global add cloudpin"],
+    ["bun", "win32", "C:\\Users\\me\\.bun\\bin\\cloudpin.exe", {}, "bun add --global cloudpin@latest"],
+    ["bun", "linux", "/home/me/.bun/bin/cloudpin", { "/home/me/.bun/bin/cloudpin": "/home/me/.bun/install/global/node_modules/cloudpin/dist/cli.js" }, "bun add --global cloudpin@latest"],
+  ])("names %s's command for its launcher on PATH (%s: %s)", async (_method, platform, onPath, links, command) => {
+    const env = platform === "win32" ? WIN_HOME : { HOME: platform === "darwin" ? "/Users/me" : "/home/me" };
+    const realpath = (path: string) => links[path] ?? path;
+    const at = (pathVersion: string) => deps({ install: "npm", onPath, env, realpath, pathVersion, platform });
+    expect(one(await runDoctor(at("0.2.1")), "path").fix).toBe(command);
+    expect(one(await runDoctor(at("")), "path").fix).toBe(command);
+    // Control: the update check is about this cloudpin, an npm one.
+    expect(one(await runDoctor({ ...at("0.2.1"), latest: async () => "0.4.0" }), "update").fix).toBe("npm install --global cloudpin");
+  });
+
+  it.each<[InstallMethod, string]>([
+    ["pnpm", "pnpm add --global cloudpin"],
+    ["volta", "volta install cloudpin"],
+    ["yarn", "yarn global add cloudpin"],
+    ["bun", "bun add --global cloudpin@latest"],
+  ])("names %s's commands for the update and a missing PATH copy when this cloudpin came from it", async (install, command) => {
+    expect(one(await runDoctor(deps({ install, latest: "0.4.0" })), "update").fix).toBe(command);
+    const missing = one(await runDoctor(deps({ install, onPath: null })), "path").fix!;
+    expect(missing.startsWith(`${command}, and check that`)).toBe(true);
+    expect(missing).toContain("on PATH");
+    expect(missing).not.toMatch(/\bnpm\b/);
+  });
+
   it("keeps the fix text in --json", async () => {
     const d = deps({ latest: "0.4.0", install: "brew" });
     const json = doctorJson(await runDoctor(d), d);

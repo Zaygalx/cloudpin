@@ -91,13 +91,17 @@ github:
       ["npm", "update it: npm install --global cloudpin@latest"],
       ["brew", "update it: brew upgrade cloudpin"],
       ["scoop", "update it: scoop update cloudpin"],
+      ["pnpm", "update it: pnpm add --global cloudpin"],
+      ["volta", "update it: volta install cloudpin"],
+      ["yarn", "update it: yarn global add cloudpin"],
+      ["bun", "update it: bun add --global cloudpin@latest"],
     ])("names the update command for a %s install", (method, command) => {
       running.method = method;
       const got = message("terraform:\n  workspace: prod\n");
       expect(got).toContain('unknown section "terraform"');
       expect(got).toContain(`written for a newer cloudpin than this one (${version}), ${command}`);
       expect(got.endsWith(command)).toBe(true);
-      if (method !== "npm") expect(got).not.toContain("npm");
+      if (method !== "npm") expect(got).not.toMatch(/\bnpm\b/);
     });
 
     it("doesn't say so for a mistake no version would accept", () => {

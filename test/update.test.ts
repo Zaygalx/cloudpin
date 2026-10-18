@@ -54,6 +54,10 @@ describe("savedNotice", () => {
   it.each([
     ["brew", "brew upgrade cloudpin"],
     ["scoop", "scoop update cloudpin"],
+    ["pnpm", "pnpm add --global cloudpin"],
+    ["volta", "volta install cloudpin"],
+    ["yarn", "yarn global add cloudpin"],
+    ["bun", "bun add --global cloudpin@latest"],
   ] as const)("names the upgrade command for a %s install", (method, command) => {
     const file = stateFile();
     writeFileSync(file, JSON.stringify({ checkedAt: 1, latest: "0.3.1" }));
