@@ -4,7 +4,8 @@ name: Release
 # token) and automatic provenance (docs.npmjs.com/trusted-publishers). It only
 # stages the version: a maintainer still approves it with 2FA on npmjs.com
 # (Staged Packages). Each tag also gets a GitHub Release with the tarball, the
-# Windows zip for Scoop, their SHA-256 checksums and a signed build-provenance
+# Windows zip for Scoop, the standalone cloudpin.exe zip for winget, their
+# SHA-256 checksums and a signed build-provenance
 # attestation (Scorecard Signed-Releases, #53). Triggered by pushing a v* tag;
 # run it by hand for a dry run, which also uploads the unsigned files.
 on:
@@ -74,7 +75,23 @@ jobs:
           sha256sum "$TARBALL" "$zip" > SHA256SUMS
           cat SHA256SUMS
           echo "zip=$zip" >> "$GITHUB_OUTPUT"
-      # One attestation covering both files ("May contain a glob pattern or list
+      # The standalone cloudpin.exe that winget installs (#96): a Node single
+      # executable application. The script runs --build-sea with the Node pinned
+      # in scripts/exe-node-version.txt, fetching its linux-x64 build and its
+      # win-x64 node.exe from nodejs.org/dist and checking each against that
+      # release's SHASUMS256.txt; the job's own Node only bundles.
+      - name: Build the standalone exe zip
+        id: exe
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          node scripts/build-exe.mjs .
+          exe="${TARBALL%.tgz}-win-x64.zip"
+          test -f "$exe"
+          sha256sum "$exe" >> SHA256SUMS
+          cat SHA256SUMS
+          echo "exe=$exe" >> "$GITHUB_OUTPUT"
+      # One attestation covering the three files ("May contain a glob pattern or list
       # of paths", the action's subject-path input).
       - name: Sign build provenance
         id: attest
@@ -84,6 +101,7 @@ jobs:
           subject-path: |
             ${{ steps.pack.outputs.tarball }}
             ${{ steps.zip.outputs.zip }}
+            ${{ steps.exe.outputs.exe }}
       - name: Keep the signed bundle next to the tarball
         if: github.event_name == 'push'
         run: cp "${{ steps.attest.outputs.bundle-path }}" "${{ steps.pack.outputs.tarball }}.sigstore.json"
@@ -95,9 +113,10 @@ jobs:
             ${{ steps.pack.outputs.tarball }}
             ${{ steps.pack.outputs.tarball }}.sigstore.json
             ${{ steps.zip.outputs.zip }}
+            ${{ steps.exe.outputs.exe }}
             SHA256SUMS
           if-no-files-found: error
-      # The dry run's files, unsigned, for trying the zip with Scoop before a tag.
+      # The dry run's files, unsigned, for trying the zips with Scoop and winget before a tag.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name == 'workflow_dispatch'
         with:
@@ -105,6 +124,7 @@ jobs:
           path: |
             ${{ steps.pack.outputs.tarball }}
             ${{ steps.zip.outputs.zip }}
+            ${{ steps.exe.outputs.exe }}
             SHA256SUMS
           if-no-files-found: error
       # prepublishOnly runs typecheck, tests and build before either command.
