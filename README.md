@@ -42,6 +42,11 @@ scoop bucket add paureis https://github.com/paureis/scoop-bucket
 scoop install paureis/cloudpin
 ```
 
+Without Node.js at all, each release from 1.3.0 has a standalone `cloudpin.exe` for 64-bit Windows: unzip
+`cloudpin-X.Y.Z-win-x64.zip` from [Releases](https://github.com/paureis/cloudpin/releases) into a folder on your PATH.
+It carries its own Node.js, so a Node.js security fix reaches it only in a new cloudpin. winget
+(`winget install paureis.cloudpin`) comes with 1.3.0 too.
+
 <details>
 <summary>npm, Yarn, Bun, or no install</summary>
 

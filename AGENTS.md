@@ -39,6 +39,8 @@ Run the type-check and the tests as separate commands and read each exit code.
 | `src/shellwords.ts` | Finds CLI calls inside a full shell command line |
 | `src/hooks/agents.ts` | One adapter per AI agent's hook format |
 | `src/cache.ts` | The identity cache |
-| `src/update.ts`, `src/install-method.ts` | The daily update notice, and how cloudpin was installed (npm, Homebrew, Scoop, pnpm, Volta, Yarn, Bun) so upgrade advice names the right command |
+| `src/update.ts`, `src/install-method.ts` | The daily update notice, and how cloudpin was installed (npm, Homebrew, Scoop, pnpm, Volta, Yarn, Bun, winget, the standalone exe) so upgrade advice names the right command |
+| `src/version.ts` | cloudpin's version: package.json's, or the literal the exe bundle inlines |
 | `src/cli.ts` | The `cloudpin` command |
+| `scripts/build-exe.mjs`, `scripts/check-exe.ps1` | The standalone `cloudpin.exe` (a Node SEA) and its zip, and the Windows checks Nightly runs on it |
 | `DESIGN.md` | Product decisions and why they were made |
