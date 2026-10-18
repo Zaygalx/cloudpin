@@ -1,17 +1,23 @@
-// Points the installers at a new release (#16 the Homebrew formula, #17 the Scoop manifest).
+// Points the installers at a new release (#16 the Homebrew formula, #17 the Scoop manifest, #96 winget).
 // Run by the release session after the vX.Y.Z tag's GitHub Release exists:
-//   node scripts/bump-installers.mjs <version> [--tap <homebrew-tap checkout>] [--bucket <scoop-bucket checkout>] [--force]
+//   node scripts/bump-installers.mjs <version> [--tap <homebrew-tap checkout>] [--bucket <scoop-bucket checkout>]
+//     [--winget <out-dir> [--date YYYY-MM-DD]] [--force]
 // It reads the sha256s from the release's SHA256SUMS (the same file the
 // release workflow attests), checks that each file an installer downloads has
 // its sha256 (the formula's npm registry tarball, so run it after the staged
-// npm version is approved; the manifest's Windows zip from the release), and
-// only then rewrites the formula's url and sha256 lines and the manifest's
-// version, url and hash lines. It never commits or pushes: review the diff in
-// each checkout, then push it.
+// npm version is approved; the manifest's Windows zip and winget's exe zip
+// from the release), and only then rewrites the formula's url and sha256
+// lines and the manifest's version, url and hash lines, and renders the
+// winget manifests from packaging/winget/ into
+// <out-dir>/manifests/p/paureis/cloudpin/<version>/ (winget-pkgs' layout; the
+// release date is the GitHub Release's published date unless --date gives
+// one). It never commits, pushes or submits: review the diff in each
+// checkout, then push it; docs/winget.md submits the winget folder.
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
 
 const VERSION = /^(\d+)\.(\d+)\.(\d+)$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -20,6 +26,19 @@ const sumsUrl = (version) => `https://github.com/paureis/cloudpin/releases/downl
 const registryUrl = (version) => `https://registry.npmjs.org/cloudpin/-/cloudpin-${version}.tgz`;
 const zipAsset = (version) => `cloudpin-${version}-windows.zip`;
 const zipUrl = (version) => `https://github.com/paureis/cloudpin/releases/download/v${version}/${zipAsset(version)}`;
+// The standalone exe's zip (#96; exeZipName in scripts/build-exe.mjs) and the release's API record, for its date.
+const exeAsset = (version) => `cloudpin-${version}-win-x64.zip`;
+const exeUrl = (version) => `https://github.com/paureis/cloudpin/releases/download/v${version}/${exeAsset(version)}`;
+const releaseApi = (version) => `https://api.github.com/repos/paureis/cloudpin/releases/tags/v${version}`;
+
+const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** True for a real calendar date written YYYY-MM-DD (winget's ReleaseDate format). */
+function isDate(text) {
+  const m = DATE.exec(text);
+  if (!m) return false;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).toISOString().slice(0, 10) === text;
+}
 
 /** -1, 0 or 1 for two x.y.z versions. */
 function compare(a, b) {
@@ -123,6 +142,78 @@ export function bumpManifest(text, version, sha256, force) {
   return { text: out, from };
 }
 
+// winget (#96): the identity and file names of the multi-file manifest in
+// packaging/winget/, written where winget-pkgs keeps them
+// (manifests/<first letter>/<publisher>/<package>/<version>/, doc/Authoring.md
+// in github.com/microsoft/winget-pkgs), so `wingetcreate submit` takes the folder.
+const WINGET_ID = "paureis.cloudpin";
+const WINGET_TEMPLATES = new URL("../packaging/winget/", import.meta.url);
+const WINGET_FILES = [`${WINGET_ID}.yaml`, `${WINGET_ID}.installer.yaml`, `${WINGET_ID}.locale.en-US.yaml`];
+const wingetDir = (out, version) => join(out, "manifests", "p", "paureis", "cloudpin", version);
+
+function readWingetTemplates() {
+  return Object.fromEntries(
+    WINGET_FILES.map((file) => {
+      try {
+        return [file, readFileSync(new URL(file, WINGET_TEMPLATES), "utf8")];
+      } catch {
+        throw new Error(`can't read packaging/winget/${file}: run this script from a cloudpin checkout`);
+      }
+    }),
+  );
+}
+
+/**
+ * The three winget manifests for `version`, from the templates: __VERSION__,
+ * __SHA256__ (uppercase, as winget-pkgs' manifests and `winget hash` write it)
+ * and __RELEASE_DATE__ filled in. Throws unless every placeholder is filled
+ * and each file parses as YAML for this package and version.
+ */
+export function renderWinget(templates, { version, sha256, releaseDate }) {
+  const fill = [
+    ["__VERSION__", version],
+    ["__SHA256__", sha256.toUpperCase()],
+    ["__RELEASE_DATE__", releaseDate],
+  ];
+  const out = {};
+  for (const file of WINGET_FILES) {
+    const template = templates[file];
+    if (typeof template !== "string") throw new Error(`packaging/winget/${file} is missing`);
+    let text = template;
+    for (const [placeholder, value] of fill) text = text.split(placeholder).join(value);
+    const left = /__[A-Z0-9_]+__/.exec(text);
+    if (left) throw new Error(`${file}: ${left[0]} is not filled in`);
+    let doc;
+    try {
+      doc = parse(text);
+    } catch (err) {
+      throw new Error(`${file} is not valid YAML: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const id = doc?.PackageIdentifier;
+    if (id !== WINGET_ID) throw new Error(`${file}: PackageIdentifier is ${id}, not ${WINGET_ID}`);
+    if (doc.PackageVersion !== version) throw new Error(`${file}: PackageVersion is ${doc.PackageVersion}, not ${version}`);
+    out[file] = text;
+  }
+  return out;
+}
+
+/** The GitHub Release's published date (UTC), YYYY-MM-DD, from the public API. */
+async function releaseDateOf(version, fetchImpl) {
+  const url = releaseApi(version);
+  const res = await download(url, fetchImpl, `; is the v${version} GitHub Release published? Otherwise pass --date YYYY-MM-DD`);
+  let published;
+  try {
+    published = JSON.parse(await res.text())?.published_at;
+  } catch {
+    published = undefined;
+  }
+  const date = typeof published === "string" ? published.slice(0, 10) : "";
+  if (!isDate(date)) {
+    throw new Error(`the GitHub Release v${version} has no published date (${url}); publish it, or pass --date YYYY-MM-DD`);
+  }
+  return date;
+}
+
 /* One entry per installer. */
 const TARGETS = [
   {
@@ -149,7 +240,9 @@ const TARGETS = [
   },
 ];
 
-const USAGE = "usage: node scripts/bump-installers.mjs <version> [--tap <path-to-homebrew-tap>] [--bucket <path-to-scoop-bucket>] [--force]";
+const USAGE =
+  "usage: node scripts/bump-installers.mjs <version> [--tap <path-to-homebrew-tap>] [--bucket <path-to-scoop-bucket>]" +
+  " [--winget <out-dir> [--date YYYY-MM-DD]] [--force]";
 
 /** `<version> --tap <path> [--force]`, in any order. */
 export function parseArgs(argv) {
@@ -158,10 +251,15 @@ export function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const target = TARGETS.find((t) => t.option === arg);
-    if (target) {
+    if (target || arg === "--winget") {
       const value = argv[++i];
       if (value === undefined || value.startsWith("--")) throw new Error(`${arg} needs a path\n${USAGE}`);
-      out[target.key] = value;
+      out[target ? target.key : "winget"] = value;
+    } else if (arg === "--date") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("--")) throw new Error(`--date needs a YYYY-MM-DD date\n${USAGE}`);
+      if (!isDate(value)) throw new Error(`--date must be YYYY-MM-DD, a real date: ${value}`);
+      out.date = value;
     } else if (arg === "--force") {
       out.force = true;
     } else if (arg.startsWith("--")) {
@@ -173,9 +271,10 @@ export function parseArgs(argv) {
   if (versions.length === 0) throw new Error(USAGE);
   if (versions.length > 1) throw new Error(`give one version, not ${versions.join(" ")}\n${USAGE}`);
   if (!VERSION.test(versions[0])) throw new Error(`the version must be x.y.z (no "v", no pre-release): ${versions[0]}`);
-  if (!TARGETS.some((t) => out[t.key] !== undefined)) {
-    throw new Error(`give at least one of ${TARGETS.map((t) => `${t.option} <path>`).join(", ")}\n${USAGE}`);
+  if (!TARGETS.some((t) => out[t.key] !== undefined) && out.winget === undefined) {
+    throw new Error(`give at least one of ${TARGETS.map((t) => `${t.option} <path>`).join(", ")}, --winget <dir>\n${USAGE}`);
   }
+  if (out.date !== undefined && out.winget === undefined) throw new Error(`--date only applies to --winget\n${USAGE}`);
   return { version: versions[0], ...out };
 }
 
@@ -204,11 +303,12 @@ async function checkSource(url, sha, fetchImpl, notFound) {
 }
 
 /**
- * Checks every requested installer file first, then downloads SHA256SUMS
- * once, checks each installer's download against it, then writes. Returns
- * one line per change.
+ * Checks every requested installer file (and that winget's version folder is
+ * empty) first, then downloads SHA256SUMS once, checks each installer's
+ * download against it, then writes. Returns one line per change.
  */
 export async function bumpInstallers(opts, fetchImpl = fetch) {
+  const { version } = opts;
   const chosen = TARGETS.filter((t) => opts[t.key] !== undefined).map((t) => {
     const path = join(opts[t.key], t.file);
     let text;
@@ -217,22 +317,48 @@ export async function bumpInstallers(opts, fetchImpl = fetch) {
     } catch {
       throw new Error(`can't read ${path}: is ${opts[t.key]} a checkout of the installer's repository?`);
     }
-    checkNewer(t.file, t.current(text), opts.version, opts.force);
+    checkNewer(t.file, t.current(text), version, opts.force);
     return { t, path, text };
   });
-  const sums = await (await download(sumsUrl(opts.version), fetchImpl)).text();
+  let winget;
+  if (opts.winget !== undefined) {
+    const dir = wingetDir(opts.winget, version);
+    const templates = readWingetTemplates();
+    if (!opts.force && existsSync(dir) && readdirSync(dir).length > 0) {
+      throw new Error(`${dir} already has files (pass --force to write the same version again)`);
+    }
+    winget = { dir, templates };
+  }
+  const sums = await (await download(sumsUrl(version), fetchImpl)).text();
   const planned = chosen.map(({ t, path, text }) => {
-    const sha = shaFor(sums, t.asset(opts.version));
-    return { t, path, sha, ...t.rewrite(text, opts.version, sha, opts.force) };
+    const sha = shaFor(sums, t.asset(version));
+    return { t, path, sha, ...t.rewrite(text, version, sha, opts.force) };
   });
-  for (const p of planned) await checkSource(p.t.source(opts.version), p.sha, fetchImpl, p.t.notFound);
+  if (winget) {
+    winget.sha = shaFor(sums, exeAsset(version));
+    winget.releaseDate = opts.date ?? (await releaseDateOf(version, fetchImpl));
+    winget.files = renderWinget(winget.templates, { version, sha256: winget.sha, releaseDate: winget.releaseDate });
+  }
+  for (const p of planned) await checkSource(p.t.source(version), p.sha, fetchImpl, p.t.notFound);
+  if (winget) {
+    await checkSource(exeUrl(version), winget.sha, fetchImpl, "; check the release's assets (release.yml uploads the exe zip from 1.3.0 on)");
+  }
   const lines = [];
   for (const p of planned) {
     writeFileSync(p.path, p.text);
     lines.push(
       `${p.path}:`,
-      `  version ${p.from.version} -> ${opts.version}`,
+      `  version ${p.from.version} -> ${version}`,
       `  sha256  ${p.from.sha256} -> ${p.sha}`,
+    );
+  }
+  if (winget) {
+    mkdirSync(winget.dir, { recursive: true });
+    for (const [file, text] of Object.entries(winget.files)) writeFileSync(join(winget.dir, file), text);
+    lines.push(
+      `${winget.dir}:`,
+      `  ${Object.keys(winget.files).join(", ")}`,
+      `  version ${version}, sha256 ${winget.sha.toUpperCase()}, release date ${winget.releaseDate}`,
     );
   }
   return lines;
