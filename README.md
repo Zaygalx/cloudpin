@@ -368,7 +368,8 @@ switch protection off. The message names your version and says to update in case
 
 cloudpin only reads which account is active, using each CLI's own identity command (`az account show`,
 `aws sts get-caller-identity`, `gcloud config list`, `vercel teams ls`, `gh api user`). It never logs in, and
-switches accounts only when you run `cloudpin switch` and confirm (an agent's attempt asks you first). It never reads
+switches accounts only when you run `cloudpin switch` (it shows the plan and asks first unless you pass `--yes`; an
+agent's attempt asks you through its hook). It never reads
 a credential file other than the kubeconfig (taking only the server and namespace from it); for `cloudpin switch` it
 also reads the AWS config file (`AWS_CONFIG_FILE` or `~/.aws/config`), taking only profile names, `sso_account_id`
 and `role_arn`, and never the credentials file. It never prints or stores a token: error messages name a variable

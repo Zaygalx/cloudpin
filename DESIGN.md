@@ -44,7 +44,8 @@ We found no popular standalone tool for per-project cloud account pinning.
 - A command picks the account itself (`--subscription`, `--profile`, `--scope`, `--project`, or env vars such
   as `AWS_PROFILE` / `CLOUDSDK_CORE_PROJECT`): check that account, not the default one.
 - cloudpin only ever reads identity, never prints tokens, and never logs in. It changes accounts only when you run
-  `cloudpin switch` and confirm (an agent's attempt asks you first).
+  `cloudpin switch`, which shows the plan and asks first unless you pass `--yes` (an agent's attempt asks the human
+  through its hook, `--yes` or not).
 - A pin file uses a section or key this version doesn't know: refuse it (fail closed, since it may be a typo that
   would leave a CLI unguarded) and say it may need a newer cloudpin, naming the running version (#67). From 1.0 the
   format only adds names, so this is how a teammate on an older version finds out.
