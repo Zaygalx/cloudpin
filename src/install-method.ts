@@ -1,6 +1,5 @@
 import { realpathSync } from "node:fs";
 import { posix, win32 } from "node:path";
-import { isSea } from "node:sea";
 
 /*
  * How the running cloudpin was installed, so upgrade advice names the command
@@ -241,6 +240,24 @@ export interface Running {
 export function runningInstallMethod(r: Running = current()): InstallMethod {
   if (!r.isSea) return installMethod(r.script, r.env, r.platform, r.realpath);
   return installMethod(r.execPath, r.env, r.platform, r.realpath) === "winget" ? "winget" : "exe";
+}
+
+/**
+ * Whether this is the standalone cloudpin.exe: node:sea's isSea(), loaded through
+ * process.getBuiltinModule (Node 22.3+, nodejs.org/api/process.html) rather than
+ * imported, because Bun has no node:sea and fails to load any module that imports
+ * it ("No such built-in module"), which would crash `cloudpin exec` in the shell
+ * wrapper and make agent hooks fail open. getBuiltinModule returns undefined for an
+ * unknown module on Node and on Bun, and Node before 22.3 has no getBuiltinModule (null here); a
+ * runtime that throws instead also reads as no SEA.
+ */
+export function isSea(getBuiltinModule: ((id: string) => unknown) | null = (id) => process.getBuiltinModule?.(id)): boolean {
+  try {
+    const sea = getBuiltinModule?.("node:sea") as { isSea?: () => boolean } | undefined;
+    return sea?.isSea?.() === true;
+  } catch {
+    return false;
+  }
 }
 
 function current(): Running {

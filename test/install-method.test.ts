@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   installMethod,
+  isSea,
   pathFix,
   reinstallCommand,
   runningInstallMethod,
@@ -402,6 +404,37 @@ describe("runningInstallMethod", () => {
     // Renamed, or in a folder another layout owns: still the exe, never a package manager's command.
     expect(runningInstallMethod(running({ isSea: true, execPath: "D:\\tools\\cp.exe" }))).toBe("exe");
     expect(runningInstallMethod(running({ isSea: true, execPath: "C:\\Users\\me\\scoop\\apps\\cloudpin\\current\\cloudpin.exe" }))).toBe("exe");
+  });
+});
+
+describe("isSea: a runtime without node:sea (Bun)", () => {
+  it("has no static node:sea import, which Bun refuses to load (No such built-in module)", () => {
+    const source = readFileSync(new URL("../src/install-method.ts", import.meta.url), "utf8");
+    expect(source).not.toMatch(/^\s*import\b[^;]*["']node:sea["']/m);
+    expect(source).not.toMatch(/\brequire\s*\(\s*["']node:sea["']/);
+  });
+
+  it("is false when the module or getBuiltinModule is missing, and asks node:sea when it is there", () => {
+    expect(isSea(null)).toBe(false);
+    // Node 22.0 to 22.2 (engines allows them) has no process.getBuiltinModule.
+    const own = Object.getOwnPropertyDescriptor(process, "getBuiltinModule");
+    Object.defineProperty(process, "getBuiltinModule", { value: undefined, configurable: true, writable: true });
+    try {
+      expect(isSea()).toBe(false);
+    } finally {
+      if (own) Object.defineProperty(process, "getBuiltinModule", own);
+      else delete (process as { getBuiltinModule?: unknown }).getBuiltinModule;
+    }
+    expect(isSea(() => undefined)).toBe(false);
+    expect(isSea(() => {
+      throw new Error("No such built-in module: node:sea");
+    })).toBe(false);
+    const asked: string[] = [];
+    expect(isSea((id) => (asked.push(id), { isSea: () => true }))).toBe(true);
+    expect(asked).toEqual(["node:sea"]);
+    expect(isSea(() => ({ isSea: () => false }))).toBe(false);
+    // On the Node that runs the tests: not a SEA.
+    expect(isSea()).toBe(false);
   });
 });
 
