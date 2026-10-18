@@ -43,4 +43,5 @@ Run the type-check and the tests as separate commands and read each exit code.
 | `src/version.ts` | cloudpin's version: package.json's, or the literal the exe bundle inlines |
 | `src/cli.ts` | The `cloudpin` command |
 | `scripts/build-exe.mjs`, `scripts/check-exe.ps1` | The standalone `cloudpin.exe` (a Node SEA) and its zip, and the Windows checks Nightly runs on it |
+| `packaging/winget/`, `docs/winget.md` | The winget manifest templates that `scripts/bump-installers.mjs --winget` fills in, and how the maintainer submits them |
 | `DESIGN.md` | Product decisions and why they were made |
