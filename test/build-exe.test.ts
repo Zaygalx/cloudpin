@@ -13,6 +13,7 @@ import {
   parseShasums,
   readExeNodeVersion,
   seaConfig,
+  securityRelease,
   writeExeZip,
 } from "../scripts/build-exe.mjs";
 import { tempDir } from "./tmp.js";
@@ -206,5 +207,31 @@ describe("newerSecurityRelease", () => {
     expect(newerSecurityRelease([{ version: "v26.12.0", security: true }, { version: "v27.1.0", security: true }], "26.12.0")).toBeNull();
     // 26.9.0 is older than 26.12.0 even though "9" > "1" as text.
     expect(newerSecurityRelease([{ version: "v26.9.0", security: true }], "26.12.0")).toBeNull();
+  });
+});
+
+describe("securityRelease", () => {
+  const INDEX = "https://nodejs.org/dist/index.json";
+
+  it("reads nodejs.org/dist/index.json with a timeout and names the newer security release", async () => {
+    const seen: { url: string; signal: unknown }[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      seen.push({ url, signal: init?.signal });
+      return new Response(JSON.stringify([{ version: "v26.13.0", security: true }, { version: "v26.12.0", security: false }]));
+    }) as unknown as typeof fetch;
+    expect(await securityRelease("26.12.0", fetchImpl)).toBe("26.13.0");
+    expect(seen.map((s) => s.url)).toEqual([INDEX]);
+    expect(seen[0]!.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("gives up on a stalled nodejs.org instead of waiting for the job to be cancelled", async () => {
+    // A server that never answers: only the signal ends the request.
+    const stalled = ((_url: string, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+      })) as unknown as typeof fetch;
+    const started = Date.now();
+    await expect(securityRelease("26.12.0", stalled, 50)).rejects.toThrow(/index.json: no response in 0.05 s/);
+    expect(Date.now() - started).toBeLessThan(5000);
   });
 });

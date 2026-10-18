@@ -28,5 +28,8 @@ export function writeExeZip(opts: { exe: string; license: string; version: strin
 /** The newest security release of `pinned`'s major line newer than it, from nodejs.org/dist/index.json, or null. */
 export function newerSecurityRelease(index: { version: string; security?: boolean }[], pinned: string): string | null;
 
+/** newerSecurityRelease of nodejs.org/dist/index.json, fetched with a timeout (default 20 s). */
+export function securityRelease(pinned: string, fetchImpl?: typeof fetch, timeoutMs?: number): Promise<string | null>;
+
 /** Bundles dist/cli.js, builds cloudpin.exe with the pinned Node and zips it into `outDir`. */
 export function buildExe(opts: { outDir: string; cacheDir?: string }): Promise<{ zipPath: string; exeSize: number; nodeVersion: string }>;

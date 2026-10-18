@@ -76,10 +76,17 @@ export function parseShasums(text) {
 
 const sha256 = (data) => createHash("sha256").update(data).digest("hex");
 
-async function download(fetchImpl, url) {
-  const res = await fetchImpl(url);
-  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-  return new Uint8Array(await res.arrayBuffer());
+/** `url`'s body; with `timeoutMs`, the request and the body together must finish in that time. */
+async function download(fetchImpl, url, timeoutMs) {
+  const init = timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : undefined;
+  try {
+    const res = await fetchImpl(url, init);
+    if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+    return new Uint8Array(await res.arrayBuffer());
+  } catch (err) {
+    if (init?.signal.aborted) throw new Error(`${url}: no response in ${timeoutMs / 1000} s`);
+    throw err;
+  }
 }
 
 /**
@@ -178,6 +185,16 @@ export function newerSecurityRelease(index, pinned) {
   return found[0]?.version ?? null;
 }
 
+/**
+ * The newest security release of `pinned`'s major line newer than it, from
+ * nodejs.org/dist/index.json, or null. Nightly runs this in a job with a short
+ * timeout, so a stalled nodejs.org fails here in `timeoutMs` instead.
+ */
+export async function securityRelease(pinned, fetchImpl = fetch, timeoutMs = 20000) {
+  const index = JSON.parse(new TextDecoder().decode(await download(fetchImpl, `${DIST}/index.json`, timeoutMs)));
+  return newerSecurityRelease(index, pinned);
+}
+
 async function run(bin, args, what) {
   const { default: spawn } = await import("cross-spawn");
   const res = spawn.sync(bin, args, { stdio: ["ignore", "inherit", "inherit"] });
@@ -235,8 +252,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       console.log(readExeNodeVersion(readFileSync(VERSION_FILE, "utf8")));
     } else if (args.length === 1 && args[0] === "--security-release") {
       const pinned = readExeNodeVersion(readFileSync(VERSION_FILE, "utf8"));
-      const index = JSON.parse(new TextDecoder().decode(await download(fetch, `${DIST}/index.json`)));
-      const newer = newerSecurityRelease(index, pinned);
+      const newer = await securityRelease(pinned);
       if (newer) console.log(newer);
     } else {
       const [outDir, ...rest] = args;
