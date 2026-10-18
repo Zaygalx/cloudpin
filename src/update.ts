@@ -17,7 +17,7 @@ const TIMEOUT_MS = 1500;
 
 // The commands that may check: everything a person runs by hand.
 const INTERACTIVE = new Set([
-  "init", "check", "status", "use", "doctor", "explain", "install-hook", "uninstall-hook",
+  "init", "check", "switch", "status", "use", "doctor", "explain", "install-hook", "uninstall-hook",
   "version", "--version", "-v", "help", "--help", "-h",
 ]);
 

@@ -19,7 +19,7 @@ describe("updateCheckAllowed", () => {
 
 describe("checksForUpdates", () => {
   it("runs for cloudpin's own commands, never on the guarded path or in shell start-up", () => {
-    for (const cmd of ["init", "check", "status", "use", "doctor", "explain", "install-hook", "uninstall-hook", "version", "--version", "-v", "help", undefined]) {
+    for (const cmd of ["init", "check", "switch", "status", "use", "doctor", "explain", "install-hook", "uninstall-hook", "version", "--version", "-v", "help", undefined]) {
       expect(checksForUpdates(cmd), String(cmd)).toBe(true);
     }
     for (const cmd of ["exec", "hook", "shell-init", "nonsense"]) expect(checksForUpdates(cmd), cmd).toBe(false);

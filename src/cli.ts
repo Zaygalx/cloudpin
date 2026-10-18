@@ -23,6 +23,7 @@ import { runningInstallMethod } from "./install-method.js";
 import { cacheDir, findOnPath } from "./paths.js";
 import { shellInit } from "./shell-init.js";
 import { buildStatus, collectStatus } from "./status.js";
+import { parseSwitchArgs, runSwitch, switchUsage } from "./switch.js";
 import { checksForUpdates, fetchLatest, refreshIfStale, savedNotice, updateCheckAllowed } from "./update.js";
 import { useCommand } from "./use.js";
 import { providers } from "./providers/index.js";
@@ -40,6 +41,9 @@ Usage:
                               Check every CLI pinned in the nearest .cloudpin.yml
                               (--only azure,aws: just these, each must be installed and logged in;
                               --json: the result as JSON, for CI)
+  cloudpin switch [--yes] [--json] [--only <clouds>]
+                              Switch each pinned CLI to its pinned account: shows the plan,
+                              asks once (--yes: don't ask), runs the commands, then checks again
   cloudpin status [--json]    Show each CLI's active account, the pins here, and installed hooks
   cloudpin explain [--json] [--agent] -- <cmd...>
                               What cloudpin would decide for a command, and why, without running it
@@ -139,6 +143,32 @@ async function check(args: string[]): Promise<number> {
   // An invalid pin file goes to stderr, as it always did.
   for (const line of formatCheckText(report)) (report.error !== undefined ? console.error : console.log)(line);
   return checkExitCode(report);
+}
+
+async function switchCommand(args: string[]): Promise<number> {
+  const parsed = parseSwitchArgs(args);
+  if ("help" in parsed) {
+    console.log(switchUsage);
+    return 0;
+  }
+  if ("error" in parsed) {
+    console.error(`cloudpin switch: ${parsed.error}\n${switchUsage}`);
+    return 1;
+  }
+  // Like check: no identity cache, so the plan and the re-check ask each CLI afresh.
+  return runSwitch(process.cwd(), process.env, deps, parsed, {
+    isTTY: Boolean(process.stdin.isTTY && process.stderr.isTTY),
+    ask: async (question) => {
+      const rl = createInterface({ input: process.stdin, output: process.stderr });
+      try {
+        return await rl.question(question);
+      } finally {
+        rl.close();
+      }
+    },
+    out: (line) => console.log(line),
+    err: (line) => console.error(line),
+  });
 }
 
 /** A file's text, or null if it can't be read. */
@@ -340,6 +370,8 @@ export async function main(argv: string[]): Promise<number> {
       return init(rest);
     case "check":
       return check(rest);
+    case "switch":
+      return switchCommand(rest);
     case "use": {
       const result = useCommand(rest, process.cwd(), process.env);
       for (const line of result.lines) (result.code === 0 ? console.log : console.error)(line);
