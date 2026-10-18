@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { upgradeCommand, type InstallMethod } from "./install-method.js";
 
 /*
  * The update notice (issue #50, owner decision 2026-10-09). At most once a
@@ -58,11 +59,11 @@ function readState(file: string): State | undefined {
   }
 }
 
-/** The notice from the last check, or null. Reads a file only: no request. */
-export function savedNotice(current: string, file: string): string | null {
+/** The notice from the last check, or null, with the upgrade command for how cloudpin was installed. Reads a file only: no request. */
+export function savedNotice(current: string, file: string, method: InstallMethod): string | null {
   const latest = readState(file)?.latest;
   if (!latest || !isNewer(latest, current)) return null;
-  return `cloudpin ${latest} is available (you have ${current}): npm install --global cloudpin`;
+  return `cloudpin ${latest} is available (you have ${current}): ${upgradeCommand(method)}`;
 }
 
 /** cloudpin's latest version on npm, or null if the registry can't be reached in time. */

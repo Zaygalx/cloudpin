@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import spawn from "cross-spawn";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -19,6 +19,7 @@ import { AGENTS, runHook, type AgentName } from "./hooks/agents.js";
 import { flagValue } from "./args.js";
 import { addEnvironment, discover, renderConfig, type FoundIdentity } from "./init.js";
 import { claudePluginEnabled, hookFile, installedHooks, planInstall, planUninstall } from "./install.js";
+import { runningInstallMethod } from "./install-method.js";
 import { cacheDir, findOnPath } from "./paths.js";
 import { shellInit } from "./shell-init.js";
 import { buildStatus, collectStatus } from "./status.js";
@@ -153,6 +154,9 @@ const isDir = (path: string): boolean => statSync(path, { throwIfNoEntry: false 
 
 const version =() => (createRequire(import.meta.url)("../package.json") as { version: string }).version;
 
+/** How this cloudpin was installed (npm, brew or scoop), from the real path of the running script. */
+const installedWith = runningInstallMethod;
+
 /** True if cloudpin can create and remove a file in `dir` (its own cache folder). */
 function writable(dir: string): boolean {
   const probe = join(dir, `.cloudpin-doctor-${process.pid}`);
@@ -197,6 +201,8 @@ async function doctor(flags: string[]): Promise<number> {
     platform: process.platform,
     version: version(),
     self: process.argv[1] ?? "",
+    install: installedWith(),
+    realpath: (p: string) => realpathSync(p),
     node: process.versions.node,
     read: readOrNull,
     writable,
@@ -399,7 +405,7 @@ export async function main(argv: string[]): Promise<number> {
 async function updateNotice(command: string | undefined): Promise<void> {
   if (!checksForUpdates(command) || !updateCheckAllowed(process.env, Boolean(process.stdout.isTTY && process.stderr.isTTY))) return;
   const stateFile = join(cacheDir(), "update-check.json");
-  const notice = savedNotice(version(), stateFile);
+  const notice = savedNotice(version(), stateFile, installedWith());
   if (notice) console.error(`\n${notice}`);
   await refreshIfStale({ now: Date.now, stateFile, fetchLatest: () => fetchLatest() });
 }

@@ -1,8 +1,19 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { tempDir } from "./tmp.js";
 import { ConfigError, findConfig, parseConfig } from "../src/config.js";
+import type { InstallMethod } from "../src/install-method.js";
+
+// How the running cloudpin was installed, as config.ts sees it; npm unless a test says otherwise.
+const running = vi.hoisted(() => ({ method: "npm" as InstallMethod }));
+vi.mock("../src/install-method.js", async (original) => ({
+  ...(await original<typeof import("../src/install-method.js")>()),
+  runningInstallMethod: () => running.method,
+}));
+afterEach(() => {
+  running.method = "npm";
+});
 
 describe("parseConfig", () => {
   it("parses every provider section", () => {
@@ -74,6 +85,19 @@ github:
       const got = message(text);
       expect(got).toContain(`written for a newer cloudpin than this one (${version})`);
       expect(got).toContain("npm install --global cloudpin@latest");
+    });
+
+    it.each<[InstallMethod, string]>([
+      ["npm", "update it: npm install --global cloudpin@latest"],
+      ["brew", "update it: brew upgrade cloudpin"],
+      ["scoop", "update it: scoop update cloudpin"],
+    ])("names the update command for a %s install", (method, command) => {
+      running.method = method;
+      const got = message("terraform:\n  workspace: prod\n");
+      expect(got).toContain('unknown section "terraform"');
+      expect(got).toContain(`written for a newer cloudpin than this one (${version}), ${command}`);
+      expect(got.endsWith(command)).toBe(true);
+      if (method !== "npm") expect(got).not.toContain("npm");
     });
 
     it("doesn't say so for a mistake no version would accept", () => {

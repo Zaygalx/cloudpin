@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { GuardDeps } from "./guard.js";
 import { AGENTS, type AgentName } from "./hooks/agents.js";
 import { claudePluginEnabled, hookFile, planInstall, type Scope } from "./install.js";
+import { installMethod, pathFix, reinstallCommand, upgradeCommand, type InstallMethod } from "./install-method.js";
 import { cacheDir, home } from "./paths.js";
 import { collectStatus, describe } from "./status.js";
 import { isNewer, updateCheckAllowed } from "./update.js";
@@ -27,6 +28,10 @@ export interface DoctorDeps {
   /** This cloudpin's version and where it runs from. */
   version: string;
   self: string;
+  /** How this cloudpin was installed (src/install-method.ts), for the upgrade advice. */
+  install: InstallMethod;
+  /** Follows links (fs.realpathSync), to tell how the cloudpin on PATH was installed; may throw. */
+  realpath: (path: string) => string;
   node: string;
   read: (path: string) => string | null;
   writable: (dir: string) => boolean;
@@ -82,7 +87,7 @@ async function selfChecks(d: DoctorDeps): Promise<Check[]> {
       latest === null
         ? { id: "update", level: "info", title: "newer version: npm could not be reached" }
         : isNewer(latest, d.version)
-          ? { id: "update", level: "warn", title: `cloudpin ${latest} is available (you have ${d.version})`, fix: "npm install --global cloudpin" }
+          ? { id: "update", level: "warn", title: `cloudpin ${latest} is available (you have ${d.version})`, fix: upgradeCommand(d.install) }
           : { id: "update", level: "ok", title: `latest version (${latest} on npm)` },
     );
   }
@@ -93,21 +98,23 @@ async function selfChecks(d: DoctorDeps): Promise<Check[]> {
       level: "fail",
       title: "no cloudpin on PATH",
       detail: ["agent hooks and the shell lines run `cloudpin` by name, so they are not checking anything"],
-      fix: "npm install --global cloudpin",
+      fix: pathFix(d.install),
     });
     return checks;
   }
   const r = await d.guard.exec("cloudpin", ["--version"], d.env);
   const version = r.stdout.trim();
+  // These fixes are for the cloudpin on PATH, which may have been installed another way than this one.
+  const pathInstall = installMethod(onPath, d.env, d.platform, d.realpath);
   if (r.code !== 0 || version === "") {
-    checks.push({ id: "path", level: "warn", title: `the cloudpin on PATH (${onPath}) did not report a version`, fix: "npm install --global cloudpin" });
+    checks.push({ id: "path", level: "warn", title: `the cloudpin on PATH (${onPath}) did not report a version`, fix: reinstallCommand(pathInstall) });
   } else if (version !== d.version) {
     checks.push({
       id: "path",
       level: "warn",
       title: `the cloudpin on PATH is ${version}, this one is ${d.version}`,
       detail: [`on PATH: ${onPath}`, "agent hooks and the shell lines run the one on PATH"],
-      fix: "npm install --global cloudpin",
+      fix: upgradeCommand(pathInstall),
     });
   } else {
     checks.push({ id: "path", level: "ok", title: `on PATH: ${onPath}` });

@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { parse, YAMLParseError } from "yaml";
 import { chooseEnvironment, currentBranch, findGitDir } from "./git.js";
+import { runningInstallMethod, upgradeCommand } from "./install-method.js";
 
 export const CONFIG_FILE = ".cloudpin.yml";
 
@@ -49,9 +50,9 @@ const VERSION = (createRequire(import.meta.url)("../package.json") as { version:
  * typo switch protection off), but says how to get the version that knows it (#67).
  */
 function unknownName(message: string): ConfigError {
-  return new ConfigError(
-    `${message}. If this file was written for a newer cloudpin than this one (${VERSION}), update it: npm install --global cloudpin@latest`,
-  );
+  const method = runningInstallMethod();
+  const command = method === "npm" ? "npm install --global cloudpin@latest" : upgradeCommand(method);
+  return new ConfigError(`${message}. If this file was written for a newer cloudpin than this one (${VERSION}), update it: ${command}`);
 }
 
 // Allowed keys per section; the first `required` entries must be present.

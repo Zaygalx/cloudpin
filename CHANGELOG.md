@@ -15,6 +15,15 @@ All notable changes to cloudpin are listed here. The format follows
 - `CLOUDPIN_BRANCH=<name>` (#10) picks the environment through the `branches` mapping when the checkout has no
   branch, as in CI on pull requests and tags. `CLOUDPIN_ENV` and `cloudpin use` still win, and an agent can't set it
   inside its own command.
+- A Homebrew tap (#16): `brew install paureis/tap/cloudpin` on macOS and Linux, from
+  [paureis/homebrew-tap](https://github.com/paureis/homebrew-tap). The formula installs the npm tarball, whose sha256
+  is the one in each GitHub Release's attested `SHA256SUMS`; like every install, it edits no shell profile and
+  installs no agent hook.
+
+### Changed
+
+- The update notice and `cloudpin doctor` name the upgrade command for the way cloudpin was installed (#16):
+  `brew upgrade cloudpin`, `scoop update cloudpin`, otherwise `npm install --global cloudpin` as before.
 
 ## [1.1.0] - 2026-10-16
 

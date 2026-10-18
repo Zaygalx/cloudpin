@@ -43,12 +43,21 @@ describe("isNewer", () => {
 describe("savedNotice", () => {
   it("is one line when the saved latest version is newer, and nothing otherwise", () => {
     const file = stateFile();
-    expect(savedNotice("0.3.0", file)).toBeNull();
+    expect(savedNotice("0.3.0", file, "npm")).toBeNull();
     writeFileSync(file, JSON.stringify({ checkedAt: 1, latest: "0.3.1" }));
-    expect(savedNotice("0.3.0", file)).toBe("cloudpin 0.3.1 is available (you have 0.3.0): npm install --global cloudpin");
-    expect(savedNotice("0.3.1", file)).toBeNull();
+    expect(savedNotice("0.3.0", file, "npm")).toBe("cloudpin 0.3.1 is available (you have 0.3.0): npm install --global cloudpin");
+    expect(savedNotice("0.3.1", file, "npm")).toBeNull();
     writeFileSync(file, "{ broken");
-    expect(savedNotice("0.3.0", file)).toBeNull();
+    expect(savedNotice("0.3.0", file, "npm")).toBeNull();
+  });
+
+  it.each([
+    ["brew", "brew upgrade cloudpin"],
+    ["scoop", "scoop update cloudpin"],
+  ] as const)("names the upgrade command for a %s install", (method, command) => {
+    const file = stateFile();
+    writeFileSync(file, JSON.stringify({ checkedAt: 1, latest: "0.3.1" }));
+    expect(savedNotice("0.3.0", file, method)).toBe(`cloudpin 0.3.1 is available (you have 0.3.0): ${command}`);
   });
 });
 

@@ -17,8 +17,10 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
 ## 1.2.0: Run it everywhere (release 2026-11-05)
 
 - **GitHub Action** ([#10](https://github.com/paureis/cloudpin/issues/10)): `cloudpin check` before deploy jobs.
-- **Homebrew** ([#16](https://github.com/paureis/cloudpin/issues/16)), **Scoop and winget**
-  ([#17](https://github.com/paureis/cloudpin/issues/17)).
+- **Homebrew** ([#16](https://github.com/paureis/cloudpin/issues/16)): `brew install paureis/tap/cloudpin`, from
+  [paureis/homebrew-tap](https://github.com/paureis/homebrew-tap).
+- **Scoop** ([#17](https://github.com/paureis/cloudpin/issues/17)): a bucket, paureis/scoop-bucket, on a Windows
+  zip attached to each release.
 - **Threat model** ([#84](https://github.com/paureis/cloudpin/issues/84)): what cloudpin protects against and what it
   doesn't, in THREAT_MODEL.md.
 
@@ -28,6 +30,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   accounts in one go, after one confirmation.
 - **VS Code / Cursor status bar** ([#18](https://github.com/paureis/cloudpin/issues/18)): a green or red pin
   showing whether the active accounts match the project.
+- **winget** ([#96](https://github.com/paureis/cloudpin/issues/96)): winget only accepts an `.exe`, so this needs a
+  standalone cloudpin (a Node single executable). Moved from 1.2.0 on 2026-10-17.
 
 ## Ideas (not scheduled yet)
 
