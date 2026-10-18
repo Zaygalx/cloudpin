@@ -79,7 +79,8 @@ try {
 
   # A copy with its bundled code damaged must not run: the exe really runs what was injected.
   $bytes = [IO.File]::ReadAllBytes($exe)
-  $at = [Text.Encoding]::ASCII.GetString($bytes).IndexOf('import { isSea } from "node:sea";')
+  # A code token (not a string) that appears once in the bundle: damaging it is a syntax error.
+  $at = [Text.Encoding]::ASCII.GetString($bytes).IndexOf('process.getBuiltinModule?.(id)')
   Check 'the bundled code is in the exe' ($at -ge 0)
   if ($at -ge 0) {
     for ($k = 0; $k -lt 6; $k++) { $bytes[$at + $k] = 0x40 }
