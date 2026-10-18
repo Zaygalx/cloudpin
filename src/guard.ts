@@ -157,11 +157,17 @@ export async function guard(req: GuardRequest, deps: GuardDeps, trace: Trace = {
       // The provider and its pin come from the same key, so the cast is safe.
       const p = provider as ProviderDef<typeof provider.name>;
       const problems = p.compare(pin as never, res.identity);
-      if (problems.length > 0) return { ...base, problems, fix: p.switchHint(pin as never) };
+      if (problems.length > 0) {
+        const hint = p.switchHint(pin as never);
+        return { ...base, problems, fix: MANUAL_ONLY.has(provider.name) ? hint : `${hint} (or run cloudpin switch)` };
+      }
       return protectedEnvironment(req, provider.name, config, trace);
     }
   }
 }
+
+/** Providers `cloudpin switch` only explains (#14), so the block message doesn't send people there. */
+const MANUAL_ONLY = new Set<Provider>(["supabase", "cloudflare"]);
 
 /**
  * The account is right; on a protected environment a command that may change
