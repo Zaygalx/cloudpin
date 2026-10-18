@@ -538,6 +538,14 @@ describe("planProvider: aws", () => {
     expect(step.manual.join(" ")).toContain("aws sso login --profile dev");
   });
 
+  it("treats [default] as the profile in use when no profile variable is set, so a logged-out default asks for the login", async () => {
+    const env = awsConfig(`[default]\nsso_account_id = ${ACCOUNT}\n`);
+    const step = await planProvider(input("aws", { account: ACCOUNT }, loggedOut("aws", "aws sso login"), { env, envFile: true }));
+    expect(step.status).toBe("manual");
+    expect(step.awsProfile).toBeUndefined();
+    expect(step.manual.join(" ")).toContain("log in: aws sso login");
+  });
+
   it("never puts another value of the config file in the plan", async () => {
     const env = awsConfig(
       `[profile dev]\naws_secret_access_key = TOPSECRETVALUE\ncredential_process = run --token TOPSECRET2\nsso_account_id = ${ACCOUNT}\n`,

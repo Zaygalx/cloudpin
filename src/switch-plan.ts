@@ -340,8 +340,9 @@ async function planAws({ pin, entry, env, envFile }: PlanInput): Promise<Plan> {
       ],
     };
   }
-  // aws-cli v2 reads AWS_PROFILE before AWS_DEFAULT_PROFILE (configprovider.py).
-  const current = env.AWS_PROFILE || env.AWS_DEFAULT_PROFILE;
+  // aws-cli v2 reads AWS_PROFILE before AWS_DEFAULT_PROFILE (configprovider.py),
+  // and with neither set uses [default], so planning AWS_PROFILE=default would change nothing.
+  const current = env.AWS_PROFILE || env.AWS_DEFAULT_PROFILE || "default";
   if (current && names.includes(current)) {
     return {
       manual: [
