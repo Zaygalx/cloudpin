@@ -318,7 +318,7 @@ export function pathFix(method: InstallMethod): string {
       // winget adds its Links folder to PATH when it installs a portable package (doc/specs/#182 in winget-cli).
       return `winget install ${WINGET_ID}, and check that winget's Links folder (%LOCALAPPDATA%\\Microsoft\\WinGet\\Links) is on PATH; open a new terminal after installing`;
     case "exe":
-      return "add the folder that holds cloudpin.exe to PATH (Settings > System > About > Advanced system settings > Environment Variables)";
+      return "add the folder that holds cloudpin.exe to your PATH, then open a new terminal";
     case "npm":
       return "npm install --global cloudpin";
   }
