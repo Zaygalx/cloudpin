@@ -1,0 +1,34 @@
+# Created with paureis/cloudpin scripts/bump-installers.mjs --winget
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.28.0.schema.json
+
+PackageIdentifier: paureis.cloudpin
+PackageVersion: __VERSION__
+PackageLocale: en-US
+Publisher: paureis
+PublisherUrl: https://github.com/paureis
+PublisherSupportUrl: https://github.com/paureis/cloudpin/issues
+PackageName: cloudpin
+PackageUrl: https://github.com/paureis/cloudpin
+License: MIT
+LicenseUrl: https://github.com/paureis/cloudpin/blob/main/LICENSE
+ShortDescription: "A seatbelt for your cloud CLIs: stops you, or your AI agent, from running commands on the wrong account."
+Tags:
+- cli
+- cloud
+- azure
+- aws
+- gcloud
+- vercel
+- github
+- kubernetes
+- kubectl
+- helm
+- supabase
+- cloudflare
+- guardrails
+- ai-agents
+- claude-code
+- devops
+ReleaseNotesUrl: https://github.com/paureis/cloudpin/releases/tag/v__VERSION__
+ManifestType: defaultLocale
+ManifestVersion: 1.28.0

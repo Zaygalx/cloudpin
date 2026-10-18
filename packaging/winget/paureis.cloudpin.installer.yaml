@@ -1,0 +1,17 @@
+# Created with paureis/cloudpin scripts/bump-installers.mjs --winget
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.28.0.schema.json
+
+PackageIdentifier: paureis.cloudpin
+PackageVersion: __VERSION__
+ReleaseDate: __RELEASE_DATE__
+Installers:
+- Architecture: x64
+  InstallerType: zip
+  NestedInstallerType: portable
+  NestedInstallerFiles:
+  - RelativeFilePath: cloudpin.exe
+    PortableCommandAlias: cloudpin
+  InstallerUrl: https://github.com/paureis/cloudpin/releases/download/v__VERSION__/cloudpin-__VERSION__-win-x64.zip
+  InstallerSha256: __SHA256__
+ManifestType: installer
+ManifestVersion: 1.28.0
