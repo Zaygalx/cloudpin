@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { installMethod, pathFix, reinstallCommand, upgradeCommand, type InstallMethod } from "../src/install-method.js";
+import {
+  installMethod,
+  pathFix,
+  reinstallCommand,
+  runningInstallMethod,
+  upgradeCommand,
+  type InstallMethod,
+  type Running,
+} from "../src/install-method.js";
 
 // A realpath that follows the links in `links` (path -> target) and returns anything else unchanged.
 const follows =
@@ -176,7 +184,9 @@ describe("installMethod: package-manager lookalikes stay npm", () => {
     expect(win("C:\\Users\\me\\AppData\\Local\\pnpm\\bin\\cloudpin-nightly.cmd", WIN_PM_ENV)).toBe("npm");
     expect(win("C:\\Users\\me\\AppData\\Local\\Yarn\\bin\\node.cmd", WIN_PM_ENV)).toBe("npm");
     // A launcher one folder down is not in the bin folder.
-    expect(win("C:\\Users\\me\\.bun\\bin\\x\\cloudpin.exe", WIN_PM_ENV)).toBe("npm");
+    // (Not Bun's; any cloudpin.exe outside the layouts is the standalone exe, #96.)
+    expect(win("C:\\Users\\me\\.bun\\bin\\x\\cloudpin.exe", WIN_PM_ENV)).toBe("exe");
+    expect(win("C:\\Users\\me\\.bun\\bin\\x\\cloudpin.cmd", WIN_PM_ENV)).toBe("npm");
   });
 
   it("is npm for a global under Volta's Node image (an unintercepted npm install --global)", () => {
@@ -320,8 +330,78 @@ describe("installMethod: Bun", () => {
     expect(linux("/home/me/.bun/bin/cloudpin", LINUX_ENV, realpath)).toBe("bun");
     expect(win("C:\\Users\\me\\.bun\\bin\\cloudpin.exe", WIN_PM_ENV)).toBe("bun");
     expect(win("C:\\Users\\me\\.bun\\bin\\cloudpin.bunx", WIN_PM_ENV)).toBe("bun");
-    expect(win("D:\\tools\\cloudpin.exe", WIN_PM_ENV)).toBe("npm");
+    // Outside Bun's folders a cloudpin.exe is the standalone exe (#96).
+    expect(win("D:\\tools\\cloudpin.exe", WIN_PM_ENV)).toBe("exe");
     expect(win("D:\\tools\\cloudpin.exe", { ...WIN_PM_ENV, BUN_INSTALL_BIN: "D:\\tools" })).toBe("bun");
+  });
+});
+
+describe("installMethod: winget and the standalone exe (#96)", () => {
+  const PKG = "C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages\\paureis.cloudpin_Microsoft.Winget.Source_8wekyb3d8bbwe";
+  const LINK = "C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Links\\cloudpin.exe";
+  const WINGET_ENV = { ...WIN_PM_ENV, ProgramFiles: "C:\\Program Files", "ProgramFiles(x86)": "C:\\Program Files (x86)" };
+
+  it("is winget for the exe in winget's portable package folder, user or machine scope, any source", () => {
+    expect(win(`${PKG}\\cloudpin.exe`, WINGET_ENV)).toBe("winget");
+    expect(win(`${PKG.toUpperCase()}\\CLOUDPIN.EXE`, WINGET_ENV)).toBe("winget");
+    expect(win("C:\\Program Files\\WinGet\\Packages\\paureis.cloudpin_msstore\\cloudpin.exe", WINGET_ENV)).toBe("winget");
+    expect(win("C:\\Program Files (x86)\\WinGet\\Packages\\paureis.cloudpin_x\\cloudpin.exe", WINGET_ENV)).toBe("winget");
+  });
+
+  it("is winget for its link in the Links folder, followed or not, and for a link whose target is gone", () => {
+    expect(win(LINK, WINGET_ENV, follows({ [LINK]: `${PKG}\\cloudpin.exe` }))).toBe("winget");
+    expect(win(LINK, WINGET_ENV)).toBe("winget");
+    expect(win(LINK, WINGET_ENV, fails)).toBe("winget");
+    expect(win("C:\\Program Files\\WinGet\\Links\\cloudpin.exe", WINGET_ENV)).toBe("winget");
+  });
+
+  it("is not winget for another package, a lookalike name, another tool's link or off Windows", () => {
+    const pkgs = "C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages";
+    expect(win(`${pkgs}\\other.cloudpin_src\\cloudpin.exe`, WINGET_ENV)).toBe("exe");
+    expect(win(`${pkgs}\\paureis.cloudpin-nightly_src\\cloudpin.exe`, WINGET_ENV)).toBe("exe");
+    expect(win("C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Links\\other.exe", WINGET_ENV)).toBe("npm");
+    // A link in Links that leads into an npm global is that npm install's.
+    const npm = "C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\cloudpin\\dist\\cli.js";
+    expect(win(LINK, WINGET_ENV, follows({ [LINK]: npm }))).toBe("npm");
+    expect(linux("/home/me/AppData/Local/Microsoft/WinGet/Packages/paureis.cloudpin_x/cloudpin.exe", { LOCALAPPDATA: "/home/me/AppData/Local" })).toBe("npm");
+  });
+
+  it("is exe for a cloudpin.exe outside every layout, and npm for npm's own launchers there", () => {
+    expect(win("D:\\tools\\cloudpin.exe", WINGET_ENV)).toBe("exe");
+    expect(win("C:\\Users\\me\\Downloads\\cloudpin-1.3.0-win-x64\\CloudPin.EXE", WINGET_ENV)).toBe("exe");
+    expect(win("C:\\Users\\me\\AppData\\Roaming\\npm\\cloudpin.cmd", WINGET_ENV)).toBe("npm");
+    expect(win("D:\\tools\\cloudpin-old.exe", WINGET_ENV)).toBe("npm");
+    expect(linux("/opt/tools/cloudpin.exe")).toBe("npm");
+  });
+});
+
+describe("runningInstallMethod", () => {
+  const PKG_EXE =
+    "C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages\\paureis.cloudpin_Microsoft.Winget.Source_8wekyb3d8bbwe\\cloudpin.exe";
+  const running = (over: Partial<Running>): Running => ({
+    isSea: false,
+    execPath: "C:\\Program Files\\nodejs\\node.exe",
+    script: "C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\cloudpin\\dist\\cli.js",
+    env: WIN_PM_ENV,
+    platform: "win32",
+    realpath: follows(),
+    ...over,
+  });
+
+  it("reads the script path when cloudpin runs on Node", () => {
+    expect(runningInstallMethod(running({}))).toBe("npm");
+    expect(runningInstallMethod(running({ script: "C:\\Users\\me\\scoop\\apps\\cloudpin\\current\\dist\\cli.js" }))).toBe("scoop");
+    // Control: Node's own path says nothing about how cloudpin was installed.
+    expect(runningInstallMethod(running({ execPath: PKG_EXE }))).toBe("npm");
+  });
+
+  it("reads the exe's own path inside a single executable application: winget there, else exe", () => {
+    // In a SEA, process.argv[1] is the exe too (nodejs.org/api/single-executable-applications.html, execArgv).
+    expect(runningInstallMethod(running({ isSea: true, execPath: PKG_EXE, script: PKG_EXE }))).toBe("winget");
+    expect(runningInstallMethod(running({ isSea: true, execPath: "D:\\tools\\cloudpin.exe", script: "D:\\tools\\cloudpin.exe" }))).toBe("exe");
+    // Renamed, or in a folder another layout owns: still the exe, never a package manager's command.
+    expect(runningInstallMethod(running({ isSea: true, execPath: "D:\\tools\\cp.exe" }))).toBe("exe");
+    expect(runningInstallMethod(running({ isSea: true, execPath: "C:\\Users\\me\\scoop\\apps\\cloudpin\\current\\cloudpin.exe" }))).toBe("exe");
   });
 });
 
@@ -356,6 +436,12 @@ describe("upgrade advice", () => {
     ["volta", "volta install cloudpin", "volta install cloudpin"],
     ["yarn", "yarn global add cloudpin", "yarn global add cloudpin"],
     ["bun", "bun add --global cloudpin@latest", "bun add --global cloudpin@latest"],
+    ["winget", "winget upgrade paureis.cloudpin", "winget uninstall paureis.cloudpin, then winget install paureis.cloudpin"],
+    [
+      "exe",
+      "download the latest cloudpin-X.Y.Z-win-x64.zip from https://github.com/paureis/cloudpin/releases",
+      "download the latest cloudpin-X.Y.Z-win-x64.zip from https://github.com/paureis/cloudpin/releases",
+    ],
   ])("%s: upgrade with %s, reinstall with %s", (method, upgrade, reinstall) => {
     expect(upgradeCommand(method)).toBe(upgrade);
     expect(reinstallCommand(method)).toBe(reinstall);
@@ -371,10 +457,12 @@ describe("upgrade advice", () => {
     expect(pathFix("volta")).toMatch(/^volta install cloudpin, .*VOLTA_HOME.* on PATH; volta setup adds it$/);
     expect(pathFix("yarn")).toMatch(/^yarn global add cloudpin, .*yarn global bin.* on PATH$/);
     expect(pathFix("bun")).toMatch(/^bun add --global cloudpin@latest, .*bun pm bin --global.* on PATH$/);
+    expect(pathFix("winget")).toMatch(/^winget install paureis\.cloudpin, .*WinGet\\Links.* on PATH/);
+    expect(pathFix("exe")).toMatch(/cloudpin\.exe.* PATH/);
   });
 
   it("never sends a package-manager install to npm", () => {
-    for (const method of ["pnpm", "volta", "yarn", "bun"] as const) {
+    for (const method of ["pnpm", "volta", "yarn", "bun", "winget", "exe"] as const) {
       for (const text of [upgradeCommand(method), reinstallCommand(method), pathFix(method)]) expect(text, method).not.toMatch(/\bnpm\b/);
     }
   });

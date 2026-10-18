@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { posix, win32 } from "node:path";
+import { isSea } from "node:sea";
 
 /*
  * How the running cloudpin was installed, so upgrade advice names the command
@@ -19,9 +20,18 @@ import { posix, win32 } from "node:path";
  * Only the environment variables cited below and each tool's defaults are read,
  * not config files: a global folder moved in .npmrc, pnpm's config.yaml,
  * .yarnrc or bunfig.toml reads as npm, the advice cloudpin gave before.
+ *
+ * The standalone cloudpin.exe (#96, docs/superpowers/specs/2026-10-18-winget-design.md)
+ * has no script: it is decided from the exe's own path, and is "winget" in
+ * winget's portable package folder or "exe" anywhere else (runningInstallMethod).
  */
 
-export type InstallMethod = "npm" | "brew" | "scoop" | "pnpm" | "volta" | "yarn" | "bun";
+export type InstallMethod = "npm" | "brew" | "scoop" | "pnpm" | "volta" | "yarn" | "bun" | "winget" | "exe";
+
+/** The winget package identifier (packaging/winget/; the design's "winget identity"). */
+const WINGET_ID = "paureis.cloudpin";
+const RELEASES = "https://github.com/paureis/cloudpin/releases";
+const DOWNLOAD = `download the latest cloudpin-X.Y.Z-win-x64.zip from ${RELEASES}`;
 
 const DEFAULT_CELLARS = ["/opt/homebrew/Cellar", "/usr/local/Cellar", "/home/linuxbrew/.linuxbrew/Cellar"];
 
@@ -51,6 +61,9 @@ const TOP_LEVEL = /^node_modules\/cloudpin\//;
 // pnpm: `<global>/5/` (pnpm 10) or `<global>/v11/<install dir>/` (pnpm 11+), then node_modules/cloudpin or its
 // folder in the virtual store, `.pnpm/cloudpin@<version>/node_modules/cloudpin` (pnpm 10 links the bins to that one).
 const PNPM_PKG = /^[^/]+\/([^/]+\/)?(node_modules\/(\.pnpm\/cloudpin@[^/]+\/node_modules\/)?|\.pnpm\/cloudpin@[^/]+\/node_modules\/)cloudpin\//;
+// winget: a portable package's folder is <root>\<PackageIdentifier>_<source identifier> (GetPortableProductCode in
+// src/AppInstallerCLICore/Workflows/PortableFlow.cpp, github.com/microsoft/winget-cli). Paths are lowercased on Windows.
+const WINGET_PKG = /^paureis\.cloudpin_[^/]+\//i;
 
 /** The layouts to look for, in order; `get` reads an environment variable, `join` is the platform's path join. */
 function layouts(
@@ -68,6 +81,12 @@ function layouts(
     // Scoop's shims are files, not links: `shim` in Scoop's lib/core.ps1 writes <root>\shims\cloudpin plus .cmd,
     // .ps1 or .exe. That is the path PATH finds, which doctor classifies.
     os.push({ method: "scoop", apps: roots.map((r) => under(r, "apps", "cloudpin")), bins: roots.map((r) => under(r, "shims")) });
+    // winget's portable packages: <root>\Packages\<id>_<source>\ with a link to the exe in <root>\Links\, root
+    // %LOCALAPPDATA%\Microsoft\WinGet for the user scope, %ProgramFiles%\WinGet or %ProgramFiles(x86)%\WinGet for the
+    // machine (doc/specs/#182 - Support for installation of portable standalone apps.md, and doc/Settings.md for
+    // the defaults; portablePackageUserRoot and portablePackageMachineRoot in winget's settings.json move them).
+    const winget = [under(localAppData, "Microsoft", "WinGet"), under(get("PROGRAMFILES"), "WinGet"), under(get("PROGRAMFILES(X86)"), "WinGet")];
+    os.push({ method: "winget", globals: winget.map((w) => under(w, "Packages")), pkg: WINGET_PKG, bins: winget.map((w) => under(w, "Links")) });
   } else {
     const cellars = [get("HOMEBREW_CELLAR"), ...DEFAULT_CELLARS];
     os.push({ method: "brew", apps: cellars.map((c) => under(c, "cloudpin")) });
@@ -193,12 +212,46 @@ export function installMethod(
     const found = all.find((layout) => matches(p, layout, !asRun || ownLauncher(layout)));
     if (found) return found.method;
   }
+  // No npm-style install writes a cloudpin.exe (npm's bins are .cmd and .ps1 files, cmd-shim), so outside the
+  // layouts above (Scoop's and Bun's exes) it is the standalone exe, unpacked wherever the user put it. The real
+  // path decides: a cloudpin.exe link to a script is that script's install.
+  if (windows && path.basename(real) === "cloudpin.exe") return "exe";
   return "npm";
 }
 
-/** How this running cloudpin was installed, from process.argv[1]. */
-export function runningInstallMethod(): InstallMethod {
-  return installMethod(process.argv[1] ?? "", process.env, process.platform, (p) => realpathSync(p));
+/** What tells how the running cloudpin was installed. */
+export interface Running {
+  /** node:sea isSea(): true inside the standalone cloudpin.exe. */
+  isSea: boolean;
+  /** process.execPath: the exe in a SEA, node otherwise. */
+  execPath: string;
+  /** process.argv[1]: the script on Node. */
+  script: string;
+  env: NodeJS.ProcessEnv;
+  platform: NodeJS.Platform;
+  realpath: (path: string) => string;
+}
+
+/**
+ * How this running cloudpin was installed. On Node, from the script's path; in
+ * the standalone exe, from the exe's path (a SEA's argv[1] is the exe too, and
+ * `import.meta.url` names it: nodejs.org/api/single-executable-applications.html),
+ * and only "winget" or "exe", since no package manager ships that exe.
+ */
+export function runningInstallMethod(r: Running = current()): InstallMethod {
+  if (!r.isSea) return installMethod(r.script, r.env, r.platform, r.realpath);
+  return installMethod(r.execPath, r.env, r.platform, r.realpath) === "winget" ? "winget" : "exe";
+}
+
+function current(): Running {
+  return {
+    isSea: isSea(),
+    execPath: process.execPath,
+    script: process.argv[1] ?? "",
+    env: process.env,
+    platform: process.platform,
+    realpath: (p) => realpathSync(p),
+  };
 }
 
 /** The command that upgrades cloudpin installed this way (README's install line for the package managers; Bun's names @latest). */
@@ -217,6 +270,11 @@ export function upgradeCommand(method: InstallMethod): string {
     case "bun":
       // bun.com/docs/pm/cli/add doesn't say a bare name upgrades an entry already in the global package.json.
       return "bun add --global cloudpin@latest";
+    case "winget":
+      // learn.microsoft.com/windows/package-manager/winget/upgrade
+      return `winget upgrade ${WINGET_ID}`;
+    case "exe":
+      return DOWNLOAD;
     case "npm":
       return "npm install --global cloudpin";
   }
@@ -229,6 +287,8 @@ export function reinstallCommand(method: InstallMethod): string {
       return "brew reinstall cloudpin";
     case "scoop":
       return "scoop uninstall cloudpin, then scoop install cloudpin";
+    case "winget":
+      return `winget uninstall ${WINGET_ID}, then winget install ${WINGET_ID}`;
     default:
       return upgradeCommand(method);
   }
@@ -254,6 +314,11 @@ export function pathFix(method: InstallMethod): string {
       return "yarn global add cloudpin, and check that Yarn's bin folder (yarn global bin) is on PATH";
     case "bun":
       return "bun add --global cloudpin@latest, and check that Bun's bin folder (bun pm bin --global) is on PATH";
+    case "winget":
+      // winget adds its Links folder to PATH when it installs a portable package (doc/specs/#182 in winget-cli).
+      return `winget install ${WINGET_ID}, and check that winget's Links folder (%LOCALAPPDATA%\\Microsoft\\WinGet\\Links) is on PATH; open a new terminal after installing`;
+    case "exe":
+      return "add the folder that holds cloudpin.exe to PATH (Settings > System > About > Advanced system settings > Environment Variables)";
     case "npm":
       return "npm install --global cloudpin";
   }

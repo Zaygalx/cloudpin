@@ -191,6 +191,42 @@ describe("runDoctor: cloudpin itself", () => {
     expect(missing).not.toMatch(/\bnpm\b/);
   });
 
+  // #96: winget's link in its Links folder, and the standalone exe anywhere else.
+  it.each<[string, string, Record<string, string>, string, string]>([
+    [
+      "winget's link",
+      "C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Links\\cloudpin.exe",
+      {
+        "C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Links\\cloudpin.exe":
+          "C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages\\paureis.cloudpin_Microsoft.Winget.Source_8wekyb3d8bbwe\\cloudpin.exe",
+      },
+      "winget upgrade paureis.cloudpin",
+      "winget uninstall paureis.cloudpin, then winget install paureis.cloudpin",
+    ],
+    [
+      "a standalone exe",
+      "D:\\tools\\cloudpin.exe",
+      {},
+      "download the latest cloudpin-X.Y.Z-win-x64.zip from https://github.com/paureis/cloudpin/releases",
+      "download the latest cloudpin-X.Y.Z-win-x64.zip from https://github.com/paureis/cloudpin/releases",
+    ],
+  ])("names the commands for %s on PATH", async (_what, onPath, links, upgrade, reinstall) => {
+    const realpath = (path: string) => links[path] ?? path;
+    const at = (pathVersion: string) => deps({ install: "npm", onPath, env: WIN_HOME, realpath, pathVersion, platform: "win32" });
+    expect(one(await runDoctor(at("0.2.1")), "path").fix).toBe(upgrade);
+    expect(one(await runDoctor(at("")), "path").fix).toBe(reinstall);
+  });
+
+  it.each<[InstallMethod, string]>([
+    ["winget", "winget upgrade paureis.cloudpin"],
+    ["exe", "download the latest cloudpin-X.Y.Z-win-x64.zip from https://github.com/paureis/cloudpin/releases"],
+  ])("names the update for this cloudpin when it is the %s one, and how to put it on PATH", async (install, command) => {
+    expect(one(await runDoctor(deps({ install, latest: "0.4.0" })), "update").fix).toBe(command);
+    const missing = one(await runDoctor(deps({ install, onPath: null })), "path").fix!;
+    expect(missing).toContain("PATH");
+    expect(missing).not.toMatch(/\bnpm\b/);
+  });
+
   it("keeps the fix text in --json", async () => {
     const d = deps({ latest: "0.4.0", install: "brew" });
     const json = doctorJson(await runDoctor(d), d);
