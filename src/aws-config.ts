@@ -56,8 +56,9 @@ function shellSplit(text: string): string[] | null {
 function profileName(header: string): string | null {
   if (header === "default") return "default";
   if (!header.startsWith("profile")) return null;
+  // botocore keeps the second word whenever there are exactly two (configloader.py _parse_section).
   const parts = shellSplit(header);
-  return parts?.length === 2 && parts[0] === "profile" ? parts[1]! : null;
+  return parts?.length === 2 ? parts[1]! : null;
 }
 
 /** The account in an IAM role ARN (arn:partition:iam::account:role/name), or undefined. */
