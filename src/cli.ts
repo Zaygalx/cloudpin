@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import spawn from "cross-spawn";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { cachedExec } from "./cache.js";
@@ -26,6 +25,7 @@ import { buildStatus, collectStatus } from "./status.js";
 import { checksForUpdates, fetchLatest, refreshIfStale, savedNotice, updateCheckAllowed } from "./update.js";
 import { useCommand } from "./use.js";
 import { providers } from "./providers/index.js";
+import { VERSION } from "./version.js";
 
 /** Exit code for a blocked command, distinct from the usual 1 and 2. */
 export const EXIT_BLOCKED = 3;
@@ -152,7 +152,7 @@ const readOrNull = (path: string): string | null => {
 
 const isDir = (path: string): boolean => statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
 
-const version =() => (createRequire(import.meta.url)("../package.json") as { version: string }).version;
+const version = () => VERSION;
 
 /** How this cloudpin was installed (an InstallMethod: npm, brew, scoop or a package manager), from the running script's path, real and as run. */
 const installedWith = runningInstallMethod;

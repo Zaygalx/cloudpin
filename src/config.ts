@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { parse, YAMLParseError } from "yaml";
 import { chooseEnvironment, currentBranch, findGitDir } from "./git.js";
 import { runningInstallMethod, upgradeCommand } from "./install-method.js";
+import { VERSION } from "./version.js";
 
 export const CONFIG_FILE = ".cloudpin.yml";
 
@@ -41,8 +41,6 @@ export interface ProjectConfig {
 export class ConfigError extends Error {
   override name = "ConfigError";
 }
-
-const VERSION = (createRequire(import.meta.url)("../package.json") as { version: string }).version;
 
 /**
  * From 1.0 the format only grows: later versions add sections and keys. An
