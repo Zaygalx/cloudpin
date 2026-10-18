@@ -61,7 +61,7 @@ jobs:
           # count too: one closed as not needed must not come back every day until the pin moves.
           filed="$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 1000 --json title --jq '.[].title')"
           if printf '%s\n' "$filed" | grep -Fxq -- "$title"; then echo "already filed: $title"; exit 0; fi
-          body="$(printf 'nodejs.org/dist/index.json marks Node %s as a security release; cloudpin.exe embeds Node %s (scripts/exe-node-version.txt). Read its release notes: if the fix touches what cloudpin uses (child processes, the file system, TLS to the npm registry), bump the pin and ship a patch release; otherwise bump it for the next minor.' "$newer" "$pinned")"
+          body="$(printf 'nodejs.org/dist/index.json marks Node %s as a security release; cloudpin.exe embeds Node %s (scripts/exe-node-version.txt). Read its release notes: if the fix touches what cloudpin uses (child processes, the file system, TLS to the npm registry), bump the pin (the one step in scripts/build-exe.mjs: the version, then --print-hashes) and ship a patch release; otherwise bump it for the next minor.' "$newer" "$pinned")"
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
 
   test:

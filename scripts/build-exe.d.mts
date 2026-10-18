@@ -10,8 +10,20 @@ export function nodeAsset(platform: string, arch: string, version: string): { fi
 /** SHASUMS256.txt as file -> lowercase sha256; throws on a line that isn't `<sha256>  <file>`. */
 export function parseShasums(text: string): Map<string, string>;
 
-/** Downloads `file` of Node `version` from nodejs.org/dist into `cacheDir`, checked against SHASUMS256.txt; returns its path. */
-export function fetchVerified(version: string, file: string, cacheDir: string, fetchImpl?: typeof fetch): Promise<string>;
+/** The Node files of `version` cloudpin.exe is built from: win-x64/node.exe and the linux-x64 tarball. */
+export function exeNodeFiles(version: string): string[];
+
+/** The sha256 exe-node-sha256.txt's `text` records for `v<version>/<file>`; throws when there is none. */
+export function recordedSha256(text: string, version: string, file: string): string;
+
+/** exe-node-sha256.txt's text for Node `version`, from that release's SHASUMS256.txt. */
+export function printHashes(version: string, fetchImpl?: typeof fetch): Promise<string>;
+
+/**
+ * Downloads `file` of Node `version` from nodejs.org/dist into `cacheDir`; throws unless its sha256 is `recorded`
+ * and SHASUMS256.txt says the same. Returns its path.
+ */
+export function fetchVerified(version: string, file: string, cacheDir: string, recorded: string, fetchImpl?: typeof fetch): Promise<string>;
 
 /** The --build-sea configuration: an ESM main, code cache and snapshot off, no experimental warning. */
 export function seaConfig(opts: { main: string; executable: string; output: string }): Record<string, unknown>;

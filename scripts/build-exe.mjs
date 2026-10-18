@@ -9,17 +9,26 @@
 // scripts/exe-node-version.txt, by `node --build-sea` of that same version
 // (nodejs.org/api/single-executable-applications.html: the blob's Node must be
 // the one it is injected into; cross-platform builds need code cache and
-// snapshot off). Every Node file comes from nodejs.org/dist and is checked
-// against that release's SHASUMS256.txt before use.
+// snapshot off). Every Node file comes from nodejs.org/dist and is used only
+// when its sha256 matches both that release's SHASUMS256.txt and the value
+// recorded in scripts/exe-node-sha256.txt when the pin was set, so a file
+// swapped on nodejs.org later, SHASUMS256.txt and all, fails the build.
 //
 // It runs the same on ubuntu-latest (release.yml, where it fetches the
 // linux-x64 node to run --build-sea) and on Windows (Nightly, where the
-// win-x64 node.exe builds itself).
+// win-x64 node.exe builds itself). Those are the two recorded files
+// (exeNodeFiles); a build that needs any other Node file fails closed.
 //
 //   node scripts/build-exe.mjs --node-version      prints the pinned version
 //   node scripts/build-exe.mjs --security-release  prints a newer security release of the pinned major, if any
-// Those two need no npm install (Nightly runs the second in a job without one),
+//   node scripts/build-exe.mjs --print-hashes      prints exe-node-sha256.txt for the pinned version
+// Those need no npm install (Nightly runs the second in a job without one),
 // so the packages are imported only by the functions that build.
+//
+// Bumping the Node pin is one step: write the new X.Y.Z to exe-node-version.txt,
+// then `node scripts/build-exe.mjs --print-hashes > scripts/exe-node-sha256.txt`,
+// and before committing compare the two values with the release's GPG-signed
+// SHASUMS256.txt.asc (github.com/nodejs/node#verifying-binaries).
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { builtinModules } from "node:module";
@@ -29,6 +38,7 @@ import { fileURLToPath } from "node:url";
 
 const DIST = "https://nodejs.org/dist";
 const VERSION_FILE = fileURLToPath(new URL("./exe-node-version.txt", import.meta.url));
+const SHA256_FILE = fileURLToPath(new URL("./exe-node-sha256.txt", import.meta.url));
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 
 /** The zip's name for a cloudpin version. */
@@ -89,16 +99,65 @@ async function download(fetchImpl, url, timeoutMs) {
   }
 }
 
+/** The Node files of `version` cloudpin.exe is built from, whose sha256 exe-node-sha256.txt records. */
+export function exeNodeFiles(version) {
+  return [nodeAsset("win32", "x64", version).file, nodeAsset("linux", "x64", version).file];
+}
+
 /**
- * `file` of Node `version`, from nodejs.org/dist into `cacheDir`, checked
- * against that release's SHASUMS256.txt. A cached copy is used only when its
- * sha256 still matches; otherwise it is downloaded again. Returns its path.
+ * The sha256 recorded for `file` of Node `version` in exe-node-sha256.txt's
+ * `text`: `<sha256>  v<version>/<file>` lines (`#` comments and blank lines
+ * allowed). Throws when there is none, so a build fails closed.
  */
-export async function fetchVerified(version, file, cacheDir, fetchImpl = fetch) {
+export function recordedSha256(text, version, file) {
+  const want = `v${version}/${file}`;
+  let found;
+  for (const line of text.split(/\r?\n/)) {
+    if (line.trim() === "" || line.startsWith("#")) continue;
+    const m = /^([0-9a-fA-F]{64}) {2}(\S+)$/.exec(line);
+    if (!m) throw new Error(`exe-node-sha256.txt: unexpected line ${JSON.stringify(line)}`);
+    if (m[2] !== want) continue;
+    if (found) throw new Error(`exe-node-sha256.txt: ${want} is there twice`);
+    found = m[1].toLowerCase();
+  }
+  if (!found) throw new Error(`exe-node-sha256.txt has no sha256 for ${want}; run node scripts/build-exe.mjs --print-hashes`);
+  return found;
+}
+
+/** exe-node-sha256.txt's text for Node `version`, from that release's SHASUMS256.txt (the pin's bump step). */
+export async function printHashes(version, fetchImpl = fetch) {
+  const sums = parseShasums(new TextDecoder().decode(await download(fetchImpl, `${DIST}/v${version}/SHASUMS256.txt`, 20000)));
+  const lines = exeNodeFiles(version).map((file) => {
+    const sum = sums.get(file);
+    if (!sum) throw new Error(`${file} is not in SHASUMS256.txt of Node ${version}`);
+    return `${sum}  v${version}/${file}`;
+  });
+  return [
+    "# sha256 of the Node files cloudpin.exe is built from (scripts/build-exe.mjs), from nodejs.org/dist/v<version>/SHASUMS256.txt.",
+    "# Regenerate with: node scripts/build-exe.mjs --print-hashes > scripts/exe-node-sha256.txt",
+    "# after bumping exe-node-version.txt, and compare with the release's signed SHASUMS256.txt.asc before committing.",
+    ...lines,
+    "",
+  ].join("\n");
+}
+
+/**
+ * `file` of Node `version`, from nodejs.org/dist into `cacheDir`. Used only
+ * when its sha256 is `recorded` (exe-node-sha256.txt) and that release's
+ * SHASUMS256.txt says the same; any mismatch throws. A cached copy is used only
+ * when its sha256 still matches; otherwise it is downloaded again. Returns its path.
+ */
+export async function fetchVerified(version, file, cacheDir, recorded, fetchImpl = fetch) {
+  if (typeof recorded !== "string" || !/^[0-9a-fA-F]{64}$/.test(recorded)) {
+    throw new Error(`${file}: the recorded sha256 ${JSON.stringify(recorded)} is not a sha256 (exe-node-sha256.txt)`);
+  }
   const base = `${DIST}/v${version}`;
   const sums = parseShasums(new TextDecoder().decode(await download(fetchImpl, `${base}/SHASUMS256.txt`)));
   const expected = sums.get(file);
   if (!expected) throw new Error(`${file} is not in SHASUMS256.txt of Node ${version}`);
+  if (expected !== recorded.toLowerCase()) {
+    throw new Error(`${file}: SHASUMS256.txt of Node ${version} says ${expected}, but exe-node-sha256.txt recorded ${recorded.toLowerCase()}`);
+  }
   const path = join(cacheDir, `v${version}`, ...file.split("/"));
   if (existsSync(path) && sha256(readFileSync(path)) === expected) return path;
   const data = await download(fetchImpl, `${base}/${file}`);
@@ -203,10 +262,10 @@ async function run(bin, args, what) {
 }
 
 /** A node of the pinned version that runs here: this one, or the official build for this platform. */
-async function builderNode(version, cacheDir, work) {
+async function builderNode(version, cacheDir, work, recorded) {
   if (process.version === `v${version}`) return process.execPath;
   const asset = nodeAsset(process.platform, process.arch, version);
-  const path = await fetchVerified(version, asset.file, cacheDir);
+  const path = await fetchVerified(version, asset.file, cacheDir, recordedSha256(recorded, version, asset.file));
   if (!asset.member) return path;
   // The tarball holds links (bin/npm and others), so only bin/node is taken, by tar (GNU tar on Linux, bsdtar on macOS).
   await run("tar", ["-xzf", path, "-C", work, asset.member], "tar");
@@ -218,6 +277,7 @@ async function builderNode(version, cacheDir, work) {
 /** Builds the zip into `outDir`; returns its path, the exe's size and the pinned Node version. */
 export async function buildExe({ outDir, cacheDir }) {
   const nodeVersion = readExeNodeVersion(readFileSync(VERSION_FILE, "utf8"));
+  const recorded = readFileSync(SHA256_FILE, "utf8");
   const { version } = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
   const entry = join(REPO, "dist", "cli.js");
   if (!existsSync(entry)) throw new Error("no dist/cli.js; run npm run build first");
@@ -228,8 +288,8 @@ export async function buildExe({ outDir, cacheDir }) {
     checkBundle(code, version);
     const main = join(work, "cloudpin.mjs");
     writeFileSync(main, code);
-    const executable = await fetchVerified(nodeVersion, "win-x64/node.exe", cache);
-    const builder = await builderNode(nodeVersion, cache, work);
+    const executable = await fetchVerified(nodeVersion, "win-x64/node.exe", cache, recordedSha256(recorded, nodeVersion, "win-x64/node.exe"));
+    const builder = await builderNode(nodeVersion, cache, work, recorded);
     const exe = join(work, "cloudpin.exe");
     const config = join(work, "sea-config.json");
     writeFileSync(config, `${JSON.stringify(seaConfig({ main, executable, output: exe }), null, 2)}\n`);
@@ -243,7 +303,7 @@ export async function buildExe({ outDir, cacheDir }) {
   }
 }
 
-const USAGE = "usage: node scripts/build-exe.mjs <out-dir> [--node-cache <dir>] | --node-version | --security-release";
+const USAGE = "usage: node scripts/build-exe.mjs <out-dir> [--node-cache <dir>] | --node-version | --security-release | --print-hashes";
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
@@ -254,6 +314,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const pinned = readExeNodeVersion(readFileSync(VERSION_FILE, "utf8"));
       const newer = await securityRelease(pinned);
       if (newer) console.log(newer);
+    } else if (args.length === 1 && args[0] === "--print-hashes") {
+      process.stdout.write(await printHashes(readExeNodeVersion(readFileSync(VERSION_FILE, "utf8"))));
     } else {
       const [outDir, ...rest] = args;
       let cacheDir;

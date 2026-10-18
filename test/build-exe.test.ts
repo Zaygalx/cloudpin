@@ -6,12 +6,15 @@ import { describe, expect, it } from "vitest";
 import {
   bundle,
   checkBundle,
+  exeNodeFiles,
   exeZipName,
   fetchVerified,
   newerSecurityRelease,
   nodeAsset,
   parseShasums,
+  printHashes,
   readExeNodeVersion,
+  recordedSha256,
   seaConfig,
   securityRelease,
   writeExeZip,
@@ -77,11 +80,13 @@ describe("fetchVerified", () => {
       return new Response(typeof body === "string" ? body : Buffer.from(body));
     }) as unknown as typeof fetch;
   const BASE = "https://nodejs.org/dist/v26.12.0";
+  // The sha256 recorded in scripts/exe-node-sha256.txt for the file.
+  const REC = sha(files["win-x64/node.exe"]!);
 
   it("downloads from nodejs.org/dist only and keeps a file whose sha256 matches SHASUMS256.txt", async () => {
     const dir = tempDir("cloudpin-fetch-");
     const seen: string[] = [];
-    const path = await fetchVerified("26.12.0", "win-x64/node.exe", dir, fakeFetch({ [`${BASE}/SHASUMS256.txt`]: sums, [`${BASE}/win-x64/node.exe`]: files["win-x64/node.exe"]! }, seen));
+    const path = await fetchVerified("26.12.0", "win-x64/node.exe", dir, REC, fakeFetch({ [`${BASE}/SHASUMS256.txt`]: sums, [`${BASE}/win-x64/node.exe`]: files["win-x64/node.exe"]! }, seen));
     expect(readFileSync(path, "utf8")).toBe("MZ fake node");
     expect(seen.every((u) => u.startsWith(`${BASE}/`))).toBe(true);
   });
@@ -89,13 +94,13 @@ describe("fetchVerified", () => {
   it("reuses a cached file only after checking it again, and replaces a bad one", async () => {
     const dir = tempDir("cloudpin-fetch-");
     const served = { [`${BASE}/SHASUMS256.txt`]: sums, [`${BASE}/win-x64/node.exe`]: files["win-x64/node.exe"]! };
-    const first = await fetchVerified("26.12.0", "win-x64/node.exe", dir, fakeFetch(served));
+    const first = await fetchVerified("26.12.0", "win-x64/node.exe", dir, REC, fakeFetch(served));
     const seen: string[] = [];
-    await fetchVerified("26.12.0", "win-x64/node.exe", dir, fakeFetch(served, seen));
+    await fetchVerified("26.12.0", "win-x64/node.exe", dir, REC, fakeFetch(served, seen));
     expect(seen).toEqual([`${BASE}/SHASUMS256.txt`]);
     writeFileSync(first, "tampered");
     const again: string[] = [];
-    await fetchVerified("26.12.0", "win-x64/node.exe", dir, fakeFetch(served, again));
+    await fetchVerified("26.12.0", "win-x64/node.exe", dir, REC, fakeFetch(served, again));
     expect(again).toContain(`${BASE}/win-x64/node.exe`);
     expect(readFileSync(first, "utf8")).toBe("MZ fake node");
   });
@@ -103,9 +108,69 @@ describe("fetchVerified", () => {
   it("refuses a download whose sha256 differs (the control), a file SHASUMS256.txt doesn't list, and an HTTP error", async () => {
     const dir = tempDir("cloudpin-fetch-");
     const evil = fakeFetch({ [`${BASE}/SHASUMS256.txt`]: sums, [`${BASE}/win-x64/node.exe`]: "MZ evil node" });
-    await expect(fetchVerified("26.12.0", "win-x64/node.exe", dir, evil)).rejects.toThrow(/sha256/);
-    await expect(fetchVerified("26.12.0", "win-x64/other.exe", dir, evil)).rejects.toThrow(/not in SHASUMS256/);
-    await expect(fetchVerified("26.12.0", "win-x64/node.exe", dir, fakeFetch({}))).rejects.toThrow(/404/);
+    await expect(fetchVerified("26.12.0", "win-x64/node.exe", dir, REC, evil)).rejects.toThrow(/sha256/);
+    await expect(fetchVerified("26.12.0", "win-x64/other.exe", dir, REC, evil)).rejects.toThrow(/not in SHASUMS256/);
+    await expect(fetchVerified("26.12.0", "win-x64/node.exe", dir, REC, fakeFetch({}))).rejects.toThrow(/404/);
+  });
+
+  it("fails closed unless the download matches both the recorded sha256 and SHASUMS256.txt", async () => {
+    const dir = tempDir("cloudpin-fetch-");
+    const served = { [`${BASE}/SHASUMS256.txt`]: sums, [`${BASE}/win-x64/node.exe`]: files["win-x64/node.exe"]! };
+    // nodejs.org serves a file and a SHASUMS256.txt that agree, but not what was recorded when the pin was set.
+    await expect(fetchVerified("26.12.0", "win-x64/node.exe", dir, "f".repeat(64), fakeFetch(served))).rejects.toThrow(/exe-node-sha256\.txt/);
+    // The file is the recorded one, but SHASUMS256.txt says otherwise.
+    const otherSums = { ...served, [`${BASE}/SHASUMS256.txt`]: `${"e".repeat(64)}  win-x64/node.exe\n` };
+    await expect(fetchVerified("26.12.0", "win-x64/node.exe", dir, REC, fakeFetch(otherSums))).rejects.toThrow(/SHASUMS256\.txt/);
+    // A cached copy that matches SHASUMS256.txt but not the record is not used either.
+    await fetchVerified("26.12.0", "win-x64/node.exe", dir, REC, fakeFetch(served));
+    await expect(fetchVerified("26.12.0", "win-x64/node.exe", dir, "f".repeat(64), fakeFetch(served))).rejects.toThrow(/exe-node-sha256\.txt/);
+    // A recorded value that isn't a sha256 is refused, whatever matches it.
+    await expect(fetchVerified("26.12.0", "win-x64/node.exe", dir, "", fakeFetch(served))).rejects.toThrow(/sha256/);
+    // Both match: kept.
+    const path = await fetchVerified("26.12.0", "win-x64/node.exe", dir, REC.toUpperCase(), fakeFetch(served));
+    expect(readFileSync(path, "utf8")).toBe("MZ fake node");
+  });
+});
+
+describe("recorded sha256 of the Node files (scripts/exe-node-sha256.txt)", () => {
+  const text = [
+    "# a comment",
+    "",
+    `${"a".repeat(64)}  v26.12.0/win-x64/node.exe`,
+    `${"B".repeat(64)}  v26.12.0/node-v26.12.0-linux-x64.tar.gz`,
+    `${"c".repeat(64)}  v26.11.0/win-x64/node.exe`,
+    "",
+  ].join("\r\n");
+
+  it("reads <sha256>  v<version>/<file> lines for the version asked", () => {
+    expect(recordedSha256(text, "26.12.0", "win-x64/node.exe")).toBe("a".repeat(64));
+    expect(recordedSha256(text, "26.12.0", "node-v26.12.0-linux-x64.tar.gz")).toBe("b".repeat(64));
+    expect(recordedSha256(text, "26.11.0", "win-x64/node.exe")).toBe("c".repeat(64));
+  });
+
+  it("fails closed for a file or version with no line, naming the bump step, and on a malformed line", () => {
+    expect(() => recordedSha256(text, "26.13.0", "win-x64/node.exe")).toThrow(/--print-hashes/);
+    expect(() => recordedSha256(text, "26.12.0", "node-v26.12.0-darwin-arm64.tar.gz")).toThrow(/no sha256/);
+    expect(() => recordedSha256(`${text}not a line\n`, "26.12.0", "win-x64/node.exe")).toThrow(/unexpected line/);
+    expect(() => recordedSha256(`${text}${"d".repeat(64)}  v26.12.0/win-x64/node.exe\n`, "26.12.0", "win-x64/node.exe")).toThrow(/twice/);
+  });
+
+  it("has both files cloudpin.exe is built from for the pinned version", () => {
+    const pinned = readExeNodeVersion(readFileSync(new URL("../scripts/exe-node-version.txt", import.meta.url), "utf8"));
+    const recorded = readFileSync(new URL("../scripts/exe-node-sha256.txt", import.meta.url), "utf8");
+    expect(exeNodeFiles(pinned)).toEqual(["win-x64/node.exe", `node-v${pinned}-linux-x64.tar.gz`]);
+    for (const file of exeNodeFiles(pinned)) expect(recordedSha256(recorded, pinned, file)).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("--print-hashes writes the file's lines for a version from its SHASUMS256.txt", async () => {
+    const linux = "node-v26.12.0-linux-x64.tar.gz";
+    const sums = `${"1".repeat(64)}  ${linux}\n${"2".repeat(64)}  win-x64/node.exe\n${"3".repeat(64)}  win-x64/node.lib\n`;
+    const fetchImpl = (async (url: string) =>
+      url === "https://nodejs.org/dist/v26.12.0/SHASUMS256.txt" ? new Response(sums) : new Response("", { status: 404 })) as unknown as typeof fetch;
+    const out = await printHashes("26.12.0", fetchImpl);
+    expect(recordedSha256(out, "26.12.0", "win-x64/node.exe")).toBe("2".repeat(64));
+    expect(recordedSha256(out, "26.12.0", linux)).toBe("1".repeat(64));
+    expect(out).not.toContain("node.lib");
   });
 });
 
