@@ -13,9 +13,11 @@ export function releaseNotes(changelog, version) {
   const end = rest.findIndex((l) => l.startsWith("## ["));
   const body = (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
   const tarball = `cloudpin-${version}.tgz`;
+  const zip = `cloudpin-${version}-windows.zip`;
   const steps = [
     [`gh attestation verify ${tarball} --repo paureis/cloudpin`, "signed build provenance"],
-    ["sha256sum -c SHA256SUMS", "checksum"],
+    [`gh attestation verify ${zip} --repo paureis/cloudpin`, "the same, for the Scoop zip"],
+    ["sha256sum -c --ignore-missing SHA256SUMS", "checksums of the files you downloaded"],
     [`npm view cloudpin@${version} dist.integrity`, "npm's sha512 for the same file"],
   ];
   // Pad to the longest command so the comments line up for any version length.
@@ -26,7 +28,8 @@ export function releaseNotes(changelog, version) {
     "### Verify this release",
     "",
     `\`${tarball}\` is the exact file npm serves (npm packs reproducibly), built and signed by this repository's`,
-    "release workflow. To check a download:",
+    "release workflow, as is " + "`" + zip + "`" + " (what the Scoop bucket installs: the same files plus their",
+    "production node_modules). To check a download:",
     "",
     "```sh",
     ...steps.map(([command, comment]) => `${command.padEnd(width)}   # ${comment}`),

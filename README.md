@@ -29,6 +29,19 @@ runs on Homebrew's own Node.js, installed if it isn't there yet):
 brew install paureis/tap/cloudpin
 ```
 
+On Windows, from 1.2.0, Scoop works too, from [paureis/scoop-bucket](https://github.com/paureis/scoop-bucket). It
+installs Scoop's own Node.js (`nodejs-lts`) if it isn't there yet, and cloudpin always runs on that one. A global
+install (`scoop install -g`) needs `nodejs-lts` installed globally too. `nodejs-lts` puts its folders at the front of
+your user PATH, so in new shells `node` and `npm` are Scoop's (and `npm install --global` installs there), ahead of
+any other Node.js on your user PATH; one on the system PATH, where the nodejs.org installer puts it, still comes
+first. Uninstalling `nodejs-lts` breaks cloudpin until you run `scoop install nodejs-lts` again, and Scoop's
+`no_junction` setting isn't supported.
+
+```powershell
+scoop bucket add paureis https://github.com/paureis/scoop-bucket
+scoop install paureis/cloudpin
+```
+
 <details>
 <summary>npm, Yarn, Bun, or no install</summary>
 

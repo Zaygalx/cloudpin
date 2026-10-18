@@ -1,11 +1,13 @@
-// Points the installers at a new release (#16; #17 adds the Scoop manifest).
+// Points the installers at a new release (#16 the Homebrew formula, #17 the Scoop manifest).
 // Run by the release session after the vX.Y.Z tag's GitHub Release exists:
-//   node scripts/bump-installers.mjs <version> --tap <path-to-homebrew-tap-checkout> [--force]
-// It reads the sha256 from the release's SHA256SUMS (the same file the release
-// workflow attests), checks that the npm registry tarball the formula's url
-// points at has that sha256 (so run it after the staged npm version is
-// approved), and rewrites the formula's url and sha256 lines. It never
-// commits or pushes: review the diff in the tap checkout, then push it.
+//   node scripts/bump-installers.mjs <version> [--tap <homebrew-tap checkout>] [--bucket <scoop-bucket checkout>] [--force]
+// It reads the sha256s from the release's SHA256SUMS (the same file the
+// release workflow attests), checks that each file an installer downloads has
+// its sha256 (the formula's npm registry tarball, so run it after the staged
+// npm version is approved; the manifest's Windows zip from the release), and
+// only then rewrites the formula's url and sha256 lines and the manifest's
+// version, url and hash lines. It never commits or pushes: review the diff in
+// each checkout, then push it.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -16,6 +18,8 @@ const SHA256 = /^[0-9a-f]{64}$/;
 
 const sumsUrl = (version) => `https://github.com/paureis/cloudpin/releases/download/v${version}/SHA256SUMS`;
 const registryUrl = (version) => `https://registry.npmjs.org/cloudpin/-/cloudpin-${version}.tgz`;
+const zipAsset = (version) => `cloudpin-${version}-windows.zip`;
+const zipUrl = (version) => `https://github.com/paureis/cloudpin/releases/download/v${version}/${zipAsset(version)}`;
 
 /** -1, 0 or 1 for two x.y.z versions. */
 function compare(a, b) {
@@ -78,11 +82,48 @@ export function bumpFormula(text, version, sha256, force) {
   return { text: out, from };
 }
 
-/*
- * One entry per installer. #17 adds the Scoop bucket here: its option
- * (--bucket), its file (bucket/cloudpin.json), the release asset it points at
- * (cloudpin-X.Y.Z-windows.zip) and its read and rewrite functions.
+const MANIFEST_FILE = join("bucket", "cloudpin.json");
+
+// The manifest's own top-level lines, four-space indented as Scoop formats its
+// JSON; autoupdate's nested url and hash are indented deeper and never match.
+const VERSION_FIELD = /^ {4}"version": "([^"]*)",$/gm;
+const URL_FIELD = /^ {4}"url": "([^"]*)",$/gm;
+const HASH_FIELD = /^ {4}"hash": "([^"]*)",$/gm;
+
+function oneField(text, pattern, what) {
+  const found = [...text.matchAll(pattern)];
+  if (found.length !== 1) throw new Error(`${MANIFEST_FILE}: expected exactly one ${what} line, found ${found.length}`);
+  return found[0];
+}
+
+/**
+ * The manifest's current version and hash, after checking it has one version,
+ * url and hash line, and that the url is cloudpin's Windows zip for that
+ * version. The bucket starts at 0.0.0 with a hash of 64 zeros, which is valid.
  */
+function readManifest(text) {
+  const version = oneField(text, VERSION_FIELD, "version")[1];
+  const url = oneField(text, URL_FIELD, "url")[1];
+  const hash = oneField(text, HASH_FIELD, "hash")[1];
+  const m = /^https:\/\/github\.com\/paureis\/cloudpin\/releases\/download\/v(\d+\.\d+\.\d+)\/cloudpin-(\d+\.\d+\.\d+)-windows\.zip$/.exec(url);
+  if (!m || m[1] !== m[2]) throw new Error(`${MANIFEST_FILE}: the url is not cloudpin's Windows zip from a GitHub Release: ${url}`);
+  if (m[1] !== version) throw new Error(`${MANIFEST_FILE}: the url is for ${m[1]} but the version is ${version}`);
+  if (!SHA256.test(hash)) throw new Error(`${MANIFEST_FILE}: the hash is not 64 hex characters: ${hash}`);
+  return { version, sha256: hash };
+}
+
+/** The manifest rewritten for `version`, every other byte kept, and what it said before. */
+export function bumpManifest(text, version, sha256, force) {
+  const from = readManifest(text);
+  checkNewer(MANIFEST_FILE, from.version, version, force);
+  const out = text
+    .replace(VERSION_FIELD, () => `    "version": "${version}",`)
+    .replace(URL_FIELD, () => `    "url": "${zipUrl(version)}",`)
+    .replace(HASH_FIELD, () => `    "hash": "${sha256}",`);
+  return { text: out, from };
+}
+
+/* One entry per installer. */
 const TARGETS = [
   {
     option: "--tap",
@@ -91,12 +132,24 @@ const TARGETS = [
     asset: (version) => `cloudpin-${version}.tgz`,
     // What the formula's url downloads, checked against the asset's sha256 before writing.
     source: registryUrl,
+    notFound: "; the npm version may still be awaiting approval on npmjs.com (Staged Packages)",
     current: (text) => readFormula(text).version,
     rewrite: bumpFormula,
   },
+  {
+    option: "--bucket",
+    key: "bucket",
+    file: MANIFEST_FILE,
+    asset: zipAsset,
+    // The manifest's url is the release asset itself.
+    source: zipUrl,
+    notFound: "; check the release's assets (release.yml uploads the zip with the tarball from 1.2.0 on)",
+    current: (text) => readManifest(text).version,
+    rewrite: bumpManifest,
+  },
 ];
 
-const USAGE = "usage: node scripts/bump-installers.mjs <version> --tap <path-to-homebrew-tap> [--force]";
+const USAGE = "usage: node scripts/bump-installers.mjs <version> [--tap <path-to-homebrew-tap>] [--bucket <path-to-scoop-bucket>] [--force]";
 
 /** `<version> --tap <path> [--force]`, in any order. */
 export function parseArgs(argv) {
@@ -141,10 +194,11 @@ async function download(url, fetchImpl, notFound = "") {
 /**
  * Refuses unless the file the installer will download has the sha256 that
  * SHA256SUMS lists: the formula's url is the npm registry tarball, which 404s
- * until the owner approves the staged version on npmjs.com.
+ * until the owner approves the staged version on npmjs.com; the manifest's is
+ * the release's Windows zip. `notFound` explains a 404.
  */
-async function checkSource(url, sha, fetchImpl) {
-  const res = await download(url, fetchImpl, "; the npm version may still be awaiting approval on npmjs.com (Staged Packages)");
+async function checkSource(url, sha, fetchImpl, notFound) {
+  const res = await download(url, fetchImpl, notFound);
   const got = createHash("sha256").update(new Uint8Array(await res.arrayBuffer())).digest("hex");
   if (got !== sha) throw new Error(`${url} has sha256 ${got}, but SHA256SUMS says ${sha}; nothing was written`);
 }
@@ -171,7 +225,7 @@ export async function bumpInstallers(opts, fetchImpl = fetch) {
     const sha = shaFor(sums, t.asset(opts.version));
     return { t, path, sha, ...t.rewrite(text, opts.version, sha, opts.force) };
   });
-  for (const p of planned) await checkSource(p.t.source(opts.version), p.sha, fetchImpl);
+  for (const p of planned) await checkSource(p.t.source(opts.version), p.sha, fetchImpl, p.t.notFound);
   const lines = [];
   for (const p of planned) {
     writeFileSync(p.path, p.text);

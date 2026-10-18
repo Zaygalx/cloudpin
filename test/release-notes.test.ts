@@ -28,14 +28,15 @@ describe("releaseNotes", () => {
     expect(notes).not.toContain("0.3.1");
     expect(notes).not.toContain("## [0.4.0]");
     expect(notes).toContain("gh attestation verify cloudpin-0.4.0.tgz --repo paureis/cloudpin");
-    expect(notes).toContain("sha256sum -c SHA256SUMS");
+    expect(notes).toContain("gh attestation verify cloudpin-0.4.0-windows.zip --repo paureis/cloudpin");
+    expect(notes).toContain("sha256sum -c --ignore-missing SHA256SUMS");
     expect(notes).toContain("npm view cloudpin@0.4.0 dist.integrity");
   });
 
   it.each(["0.4.0", "10.12.3-beta.1"])("lines up the comments in the verify block for %s", (version) => {
     const changelog = `## [${version}] - 2026-10-10\n\nNotes.\n`;
     const block = (releaseNotes(changelog, version).split("```sh\n")[1] ?? "").split("\n```")[0]!.split("\n");
-    expect(block).toHaveLength(3);
+    expect(block).toHaveLength(4);
     const columns = block.map((line) => line.indexOf("  # "));
     expect(columns.every((c) => c > 0 && c === columns[0])).toBe(true);
   });

@@ -21,6 +21,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   [paureis/homebrew-tap](https://github.com/paureis/homebrew-tap).
 - **Scoop** ([#17](https://github.com/paureis/cloudpin/issues/17)): a bucket, paureis/scoop-bucket, on a Windows
   zip attached to each release.
+- **Upgrade advice for pnpm and Volta** ([#98](https://github.com/paureis/cloudpin/issues/98)): name the right
+  upgrade command when cloudpin was installed globally with pnpm or Volta.
 - **Threat model** ([#84](https://github.com/paureis/cloudpin/issues/84)): what cloudpin protects against and what it
   doesn't, in THREAT_MODEL.md.
 

@@ -19,6 +19,12 @@ All notable changes to cloudpin are listed here. The format follows
   [paureis/homebrew-tap](https://github.com/paureis/homebrew-tap). The formula installs the npm tarball, whose sha256
   is the one in each GitHub Release's attested `SHA256SUMS`; like every install, it edits no shell profile and
   installs no agent hook.
+- A Scoop bucket (#17): `scoop bucket add paureis https://github.com/paureis/scoop-bucket`, then
+  `scoop install paureis/cloudpin` on Windows. It runs on Scoop's own `nodejs-lts` through Scoop's exe shim, so
+  arguments reach cloudpin exactly as with npm's shims (a `.cmd` launcher would let cmd.exe re-read `&`, `|`, `%`
+  and `^`). Like every install, it edits no shell profile and installs no agent hook.
+- Each GitHub Release also has `cloudpin-X.Y.Z-windows.zip` (#17), the file the Scoop bucket installs: the package's
+  files plus their production `node_modules`, listed in `SHA256SUMS` and covered by the same signed attestation.
 
 ### Changed
 
