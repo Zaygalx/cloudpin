@@ -201,4 +201,11 @@ describe("envFor (#86)", () => {
     // The user's own shell (not agent mode) may set it.
     expect(envFor({ HOME: "/h" }, inv!)).toEqual({ HOME: "/h", CLOUDPIN_BRANCH: "main" });
   });
+
+  it("never lets the line set CLOUDPIN_ENV_FILE for an agent (#14)", () => {
+    const [inv] = findInvocations("CLOUDPIN_ENV_FILE=/tmp/x cloudpin switch --yes", ["cloudpin"]);
+    expect(inv!.env).toEqual({ CLOUDPIN_ENV_FILE: "/tmp/x" });
+    expect(envFor({ HOME: "/h" }, inv!, { agent: true })).toEqual({ HOME: "/h" });
+    expect(envFor({ HOME: "/h" }, inv!)).toEqual({ HOME: "/h", CLOUDPIN_ENV_FILE: "/tmp/x" });
+  });
 });

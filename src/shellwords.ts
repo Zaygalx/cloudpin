@@ -26,7 +26,7 @@ export { UNKNOWN_VALUE };
  * Variables only the user may set. Set before starting the agent, they count; set by the agent inside its own command,
  * they would let it pick a laxer environment, confirm for the user or skip the check, so they are ignored there.
  */
-export const USER_ONLY_VARS = ["CLOUDPIN_ENV", "CLOUDPIN_BRANCH", "CLOUDPIN_CONFIRM", "CLOUDPIN_SKIP"];
+export const USER_ONLY_VARS = ["CLOUDPIN_ENV", "CLOUDPIN_BRANCH", "CLOUDPIN_CONFIRM", "CLOUDPIN_SKIP", "CLOUDPIN_ENV_FILE"];
 
 /**
  * The environment a call runs with: `base` (the environment the line starts
