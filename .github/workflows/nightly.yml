@@ -24,6 +24,10 @@ jobs:
   changed:
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    permissions:
+      contents: read
+      # Only for the Node security check below.
+      issues: write
     outputs:
       run: ${{ steps.check.outputs.run }}
     steps:
@@ -34,13 +38,33 @@ jobs:
         run: |
           age=$(( $(date +%s) - $(git log -1 --format=%ct) ))
           if [ "$FORCE" = "true" ] || [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; echo "main unchanged for $age s; skipping."; fi
+      # cloudpin.exe embeds its Node (#96), so a newer security release of the
+      # pinned Node line may call for a rebuild (the winget design: a patch release
+      # only if the fix touches child processes, the file system or TLS). Daily,
+      # whether or not main changed; one open issue per release. The script needs
+      # no npm install for this; a failure here never skips the tests.
+      - name: Node security release for cloudpin.exe
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pinned="$(node scripts/build-exe.mjs --node-version)"
+          newer="$(node scripts/build-exe.mjs --security-release)"
+          if [ -z "$newer" ]; then echo "no Node security release newer than $pinned"; exit 0; fi
+          title="Node $newer security release: rebuild cloudpin.exe?"
+          # Listed first, so a failed list stops the step instead of reading as "no such issue".
+          open="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 500 --json title --jq '.[].title')"
+          if printf '%s\n' "$open" | grep -Fxq -- "$title"; then echo "already open: $title"; exit 0; fi
+          body="$(printf 'nodejs.org/dist/index.json marks Node %s as a security release; cloudpin.exe embeds Node %s (scripts/exe-node-version.txt). Read its release notes: if the fix touches what cloudpin uses (child processes, the file system, TLS to the npm registry), bump the pin and ship a patch release; otherwise bump it for the next minor.' "$newer" "$pinned")"
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
 
   test:
     needs: changed
     if: needs.changed.outputs.run == 'true'
     name: ${{ matrix.os }} / node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 8
+    # 10 for Windows's cloudpin.exe build and checks (#96); Linux stays well under 8.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -64,3 +88,18 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: node dist/cli.js --version
+      # The standalone cloudpin.exe (#96), built from this checkout with the pinned
+      # Node (its win-x64 node.exe, checked against SHASUMS256.txt, builds itself)
+      # and run by its path from Windows PowerShell 5.1: version, refusals, a pin
+      # with az absent, arguments cmd.exe would re-parse, and controls that must fail.
+      - name: Build cloudpin.exe
+        if: runner.os == 'Windows'
+        run: node scripts/build-exe.mjs exe-out
+      - name: Check cloudpin.exe
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $zip = Get-ChildItem exe-out -Filter 'cloudpin-*-win-x64.zip' | Select-Object -First 1
+          if (-not $zip) { throw 'no cloudpin-*-win-x64.zip in exe-out' }
+          powershell -NoProfile -File scripts/check-exe.ps1 $zip.FullName
+          if ($LASTEXITCODE -ne 0) { exit 1 }
