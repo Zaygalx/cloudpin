@@ -24,10 +24,6 @@ jobs:
   changed:
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    permissions:
-      contents: read
-      # Only for the Node security check below.
-      issues: write
     outputs:
       run: ${{ steps.check.outputs.run }}
     steps:
@@ -38,13 +34,22 @@ jobs:
         run: |
           age=$(( $(date +%s) - $(git log -1 --format=%ct) ))
           if [ "$FORCE" = "true" ] || [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; echo "main unchanged for $age s; skipping."; fi
-      # cloudpin.exe embeds its Node (#96), so a newer security release of the
-      # pinned Node line may call for a rebuild (the winget design: a patch release
-      # only if the fix touches child processes, the file system or TLS). Daily,
-      # whether or not main changed; one open issue per release. The script needs
-      # no npm install for this; a failure here never skips the tests.
+
+  # cloudpin.exe embeds its Node (#96), so a newer security release of the
+  # pinned Node line may call for a rebuild (the winget design: a patch release
+  # only if the fix touches child processes, the file system or TLS). Daily,
+  # whether or not main changed; one issue per release. Its own job, the only one
+  # that may write issues, and no job needs it: a failure or a stalled
+  # nodejs.org here never skips the tests. The script needs no npm install.
+  node-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Node security release for cloudpin.exe
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
