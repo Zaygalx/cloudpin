@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { formatBlock, formatConfirm } from "../format.js";
 import { commandName, guard, type GuardDeps } from "../guard.js";
 import { envFor, findInvocations } from "../shellwords.js";
+import { parseSwitchArgs } from "../switch.js";
 
 /** How one agent hands a shell command to its hook and reads the answer. */
 export interface AgentHook {
@@ -159,6 +160,38 @@ function useConfirmation(args: string[]): Confirmation {
   };
 }
 
+/**
+ * `cloudpin switch` (#14) changes the active account of the user's CLIs, for
+ * every terminal, so the human decides, as for `cloudpin use <env>`. The reason
+ * names the pins it would switch to, read from the pin file without running any
+ * CLI, so the question comes fast. `--yes` only skips cloudpin's own prompt.
+ */
+function switchConfirmation(args: string[], deps: GuardDeps, cwd: string, env: NodeJS.ProcessEnv): Confirmation {
+  const command = ["cloudpin", ...args].join(" ");
+  let target = "";
+  try {
+    const config = deps.findConfig(cwd, env);
+    if (config) {
+      const parsed = parseSwitchArgs(args.slice(1));
+      const only = "only" in parsed && parsed.only ? parsed.only.map((n) => n.trim().toLowerCase()) : undefined;
+      const pins = Object.entries(config.pins)
+        .filter(([name, pin]) => pin && (!only || only.includes(name)))
+        .map(([name, pin]) => `${name} ${Object.entries(pin as Record<string, string>).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+      const environment = config.environment ? ` (environment "${config.environment.name}")` : "";
+      target = `, to the accounts pinned in ${config.path}${environment}${pins.length > 0 ? `: ${pins.join("; ")}` : ""}`;
+    }
+  } catch {
+    // An unreadable pin file: ask without naming the pins.
+  }
+  const what = `cloudpin: \`${command}\` switches the active accounts of your cloud CLIs, for every terminal and not just this one${target}`;
+  return {
+    ask: `${what}. It runs commands such as az account set or gh auth switch, so it needs your OK.`,
+    deny: `${what}.\n  This agent's hook cannot ask the user to confirm, so cloudpin blocks it.\n  Do not work around this; ask the human to run \`cloudpin switch\`.`,
+  };
+}
+
+const asksForHelp = (args: string[]) => args.includes("--help") || args.includes("-h");
+
 export type AgentName = keyof typeof AGENTS;
 
 /**
@@ -228,6 +261,9 @@ async function checkCommand(
     if (commandName(inv.bin) === "cloudpin") {
       // A bare `cloudpin use` only shows the current environment.
       if (inv.args[0] === "use" && inv.args.length > 1) confirmations.push(useConfirmation(inv.args));
+      if (inv.args[0] === "switch" && !asksForHelp(inv.args)) {
+        confirmations.push(switchConfirmation(inv.args, deps, inv.cwd ?? call.cwd, envFor(env, inv, { agent: true })));
+      }
       // `cloudpin exec` checks in shell mode, where CLOUDPIN_SKIP works, so
       // the hook checks the wrapped command itself, as the agent's.
       const wrapped = inv.args[0] === "exec" ? inv.args.slice(inv.args[1] === "--" ? 2 : 1) : [];
