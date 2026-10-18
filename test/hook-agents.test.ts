@@ -294,6 +294,21 @@ describe("runHook: cloudpin switch", () => {
     expect(await runHook(AGENTS.claude, inputs.codex("cloudpin switch --help"), deps, {})).toBe("");
     expect(await runHook(AGENTS.claude, inputs.codex("cloudpin switch -h"), deps, {})).toBe("");
   });
+
+  it("asks when cloudpin switch or cloudpin use is wrapped in cloudpin exec, nested or not", async () => {
+    for (const command of [
+      "cloudpin exec -- cloudpin switch --yes",
+      "cloudpin exec cloudpin switch --yes",
+      "cloudpin exec -- cloudpin exec cloudpin switch --yes",
+      "cloudpin exec -- cloudpin use prod",
+    ]) {
+      const claude = JSON.parse((await runHook(AGENTS.claude, inputs.codex(command), deps, {})) || "{}");
+      expect(claude.hookSpecificOutput?.permissionDecision, command).toBe("ask");
+      const codex = JSON.parse((await runHook(AGENTS.codex, inputs.codex(command), deps, {})) || "{}");
+      expect(codex.hookSpecificOutput?.permissionDecision, command).toBe("deny");
+    }
+    expect(await runHook(AGENTS.claude, inputs.codex("cloudpin exec -- cloudpin switch --help"), deps, {})).toBe("");
+  });
 });
 
 describe("runHook: cloudpin exec inside an agent's command", () => {

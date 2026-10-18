@@ -257,8 +257,10 @@ async function checkCommand(
   const bins = [...deps.providers.flatMap((p) => p.bins), "cloudpin"];
   const blocks: string[] = [];
   const confirmations: Confirmation[] = [];
-  for (let inv of findInvocations(call.command, bins, call.cwd)) {
-    if (commandName(inv.bin) === "cloudpin") {
+  invocations: for (let inv of findInvocations(call.command, bins, call.cwd)) {
+    // A loop, so `cloudpin exec -- cloudpin switch` (or a nested exec) is asked
+    // about as the bare command is.
+    while (commandName(inv.bin) === "cloudpin") {
       // A bare `cloudpin use` only shows the current environment.
       if (inv.args[0] === "use" && inv.args.length > 1) confirmations.push(useConfirmation(inv.args));
       if (inv.args[0] === "switch" && !asksForHelp(inv.args)) {
@@ -267,7 +269,7 @@ async function checkCommand(
       // `cloudpin exec` checks in shell mode, where CLOUDPIN_SKIP works, so
       // the hook checks the wrapped command itself, as the agent's.
       const wrapped = inv.args[0] === "exec" ? inv.args.slice(inv.args[1] === "--" ? 2 : 1) : [];
-      if (wrapped.length === 0) continue;
+      if (wrapped.length === 0) continue invocations;
       inv = { ...inv, bin: wrapped[0]!, args: wrapped.slice(1) };
     }
     const verdict = await guard(
