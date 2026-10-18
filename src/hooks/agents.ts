@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { formatBlock, formatConfirm } from "../format.js";
 import { commandName, guard, type GuardDeps } from "../guard.js";
-import { envFor, findInvocations } from "../shellwords.js";
+import { envFor, findInvocations, USER_ONLY_VARS, type Invocation } from "../shellwords.js";
 import { parseSwitchArgs } from "../switch.js";
 
 /** How one agent hands a shell command to its hook and reads the answer. */
@@ -165,9 +165,18 @@ function useConfirmation(args: string[]): Confirmation {
  * every terminal, so the human decides, as for `cloudpin use <env>`. The reason
  * names the pins it would switch to, read from the pin file without running any
  * CLI, so the question comes fast. `--yes` only skips cloudpin's own prompt.
+ * Unlike guard, it reads the pins with the environment the command will really
+ * have, user-only variables set on the line included (the human runs it, so
+ * they count), and shows those variables in the command, so the human sees
+ * what they approve.
  */
-function switchConfirmation(args: string[], deps: GuardDeps, cwd: string, env: NodeJS.ProcessEnv): Confirmation {
-  const command = ["cloudpin", ...args].join(" ");
+function switchConfirmation(args: string[], deps: GuardDeps, cwd: string, base: NodeJS.ProcessEnv, inv: Invocation): Confirmation {
+  const env = envFor(base, inv);
+  const prefix = USER_ONLY_VARS.flatMap((name) => {
+    if (env[name] === base[name]) return [];
+    return env[name] === undefined ? [`unset ${name};`] : [`${name}=${shellQuote(env[name]!)}`];
+  });
+  const command = [...prefix, "cloudpin", ...args].join(" ");
   let target = "";
   try {
     const config = deps.findConfig(cwd, env);
@@ -191,6 +200,9 @@ function switchConfirmation(args: string[], deps: GuardDeps, cwd: string, env: N
 }
 
 const asksForHelp = (args: string[]) => args.includes("--help") || args.includes("-h");
+
+/** A value as a POSIX shell word: bare when safe, else single-quoted. */
+const shellQuote = (value: string) => (/^[\w./:@%+,-]+$/.test(value) ? value : `'${value.split("'").join("'\\''")}'`);
 
 export type AgentName = keyof typeof AGENTS;
 
@@ -264,7 +276,7 @@ async function checkCommand(
       // A bare `cloudpin use` only shows the current environment.
       if (inv.args[0] === "use" && inv.args.length > 1) confirmations.push(useConfirmation(inv.args));
       if (inv.args[0] === "switch" && !asksForHelp(inv.args)) {
-        confirmations.push(switchConfirmation(inv.args, deps, inv.cwd ?? call.cwd, envFor(env, inv, { agent: true })));
+        confirmations.push(switchConfirmation(inv.args, deps, inv.cwd ?? call.cwd, env, inv));
       }
       // `cloudpin exec` checks in shell mode, where CLOUDPIN_SKIP works, so
       // the hook checks the wrapped command itself, as the agent's.

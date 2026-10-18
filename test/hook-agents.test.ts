@@ -1,8 +1,11 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { FoundConfig } from "../src/config.js";
+import { findConfig, type FoundConfig } from "../src/config.js";
 import type { GuardDeps } from "../src/guard.js";
 import { AGENTS, runHook } from "../src/hooks/agents.js";
 import type { ProviderDef } from "../src/types.js";
+import { tempDir } from "./tmp.js";
 
 // Fake gh whose active user comes from FAKE_GH_USER, defaulting to the pinned one.
 const gh: ProviderDef<"github"> = {
@@ -308,6 +311,28 @@ describe("runHook: cloudpin switch", () => {
       expect(codex.hookSpecificOutput?.permissionDecision, command).toBe("deny");
     }
     expect(await runHook(AGENTS.claude, inputs.codex("cloudpin exec -- cloudpin switch --help"), deps, {})).toBe("");
+  });
+
+  it("names the environment the line selects, and shows its CLOUDPIN_ENV, as the real run would honour it", async () => {
+    const dir = tempDir("cloudpin-hook-switch-");
+    writeFileSync(
+      join(dir, ".cloudpin.yml"),
+      "environments:\n  staging:\n    github: { user: stage-bot }\n  production:\n    protected: true\n    github: { user: prod-owner }\n",
+    );
+    const realDeps: GuardDeps = { ...deps, findConfig };
+    const input = JSON.stringify({
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "CLOUDPIN_ENV=production cloudpin switch --yes" },
+      cwd: dir,
+    });
+    const out = JSON.parse(await runHook(AGENTS.claude, input, realDeps, {}));
+    expect(out.hookSpecificOutput.permissionDecision).toBe("ask");
+    const reason: string = out.hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('environment "production"');
+    expect(reason).toContain("github user prod-owner");
+    expect(reason).not.toContain("stage-bot");
+    expect(reason).toContain("CLOUDPIN_ENV=production cloudpin switch --yes");
   });
 });
 
