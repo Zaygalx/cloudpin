@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import spawn from "cross-spawn";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -11,14 +10,14 @@ import { createHandler, serve } from "./mcp.js";
 import { cloudpinTools } from "./mcp-tools.js";
 import { confirmProtected } from "./confirm.js";
 import { CONFIG_FILE, ConfigError, findConfig, PROVIDERS } from "./config.js";
-import { realExec } from "./exec.js";
+import { realExec, runInherited } from "./exec.js";
 import { formatBlock } from "./format.js";
 import { guard, type GuardDeps } from "./guard.js";
 import { AGENTS, runHook, type AgentName } from "./hooks/agents.js";
 import { flagValue } from "./args.js";
 import { addEnvironment, discover, renderConfig, type FoundIdentity } from "./init.js";
 import { claudePluginEnabled, hookFile, installedHooks, planInstall, planUninstall } from "./install.js";
-import { cacheDir, findOnPath } from "./paths.js";
+import { cacheDir, findOnPath, isExecutableFile } from "./paths.js";
 import { shellInit } from "./shell-init.js";
 import { buildStatus, collectStatus } from "./status.js";
 import { checksForUpdates, fetchLatest, refreshIfStale, savedNotice, updateCheckAllowed } from "./update.js";
@@ -60,7 +59,7 @@ Exit codes: 0 ok, 1 usage or check failure, ${EXIT_BLOCKED} command blocked.`;
 
 // `check` always asks the CLIs directly; `exec` and the hooks use the short-lived
 // identity cache (src/cache.ts), which CLOUDPIN_NO_CACHE=1 turns off.
-const onPath = (bin: string, env: NodeJS.ProcessEnv) => findOnPath(bin, env, process.platform, existsSync);
+const onPath = (bin: string, env: NodeJS.ProcessEnv) => findOnPath(bin, env, process.platform, isExecutableFile);
 const deps: GuardDeps = { providers, exec: realExec, findConfig, onPath };
 const cachedDeps: GuardDeps = {
   ...deps,
@@ -271,14 +270,8 @@ async function exec(argv: string[]): Promise<number> {
     });
     if (!confirmed) return EXIT_BLOCKED;
   }
-  return new Promise((resolve) => {
-    const child = spawn(bin, args, { stdio: "inherit" });
-    child.on("error", (err) => {
-      console.error(`cloudpin exec: ${err.message}`);
-      resolve(127);
-    });
-    child.on("close", (code) => resolve(code ?? 1));
-  });
+  // From PATH only, never the current folder (src/exec.ts, GHSA-3cf7-5v5w-q5vr).
+  return runInherited(bin, args, process.env);
 }
 
 async function confirm(flags: string[], question: string): Promise<boolean> {

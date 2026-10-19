@@ -326,13 +326,11 @@ describe("formatDoctor and doctorJson", () => {
 
 describe("findOnPath", () => {
   it("finds a command in PATH order, with PATHEXT on Windows", () => {
-    const a = join("/", "a");
-    const b = join("/", "b");
-    const files = new Set([join(b, "cloudpin.CMD"), join(b, "cloudpin"), join(a, "other")]);
+    const files = new Set(["C:\\b\\cloudpin.CMD", "/b/cloudpin", "/a/other"]);
     const exists = (p: string) => files.has(p);
-    expect(findOnPath("cloudpin", { PATH: [a, b].join(";"), PATHEXT: ".EXE;.CMD" }, "win32", exists)).toBe(join(b, "cloudpin.CMD"));
-    expect(findOnPath("cloudpin", { PATH: [a, b].join(":") }, "linux", exists)).toBe(join(b, "cloudpin"));
-    expect(findOnPath("missing", { PATH: [a, b].join(":") }, "linux", exists)).toBeNull();
+    expect(findOnPath("cloudpin", { PATH: "C:\\a;C:\\b", PATHEXT: ".EXE;.CMD" }, "win32", exists)).toBe("C:\\b\\cloudpin.CMD");
+    expect(findOnPath("cloudpin", { PATH: "/a:/b" }, "linux", exists)).toBe("/b/cloudpin");
+    expect(findOnPath("missing", { PATH: "/a:/b" }, "linux", exists)).toBeNull();
     expect(findOnPath("cloudpin", {}, "linux", exists)).toBeNull();
   });
 });
