@@ -59,7 +59,10 @@ npx cloudpin --help
 Requires Node.js 22 or later. Works on Windows, macOS and Linux. The `.cloudpin.yml` format is stable from 1.0 on
 (see Configuration), and [feedback](https://github.com/paureis/cloudpin/issues/new/choose) is very welcome.
 
-**Latest release: 1.1.0** (2026-10-16): a Claude Code plugin. `claude plugin install cloudpin --marketplace
+**Latest release: 1.1.1** (2026-10-18): a security fix for Windows, where cloudpin now runs each CLI by its full path
+from PATH and never from the current folder
+([GHSA-3cf7-5v5w-q5vr](https://github.com/paureis/cloudpin/security/advisories/GHSA-3cf7-5v5w-q5vr)); please upgrade.
+1.1.0 (2026-10-16) added a Claude Code plugin. `claude plugin install cloudpin --marketplace
 paureis/cloudpin` gives Claude Code the hook, a read-only MCP server and a skill that tells it to check first and to
 stop and ask you when a command is blocked (see Claude Code plugin). For any other agent that supports MCP,
 `cloudpin mcp` is the same read-only server: it reports the accounts in use and whether a command would be allowed,
