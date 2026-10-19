@@ -23,8 +23,6 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   zip attached to each release.
 - **Upgrade advice for pnpm and Volta** ([#98](https://github.com/paureis/cloudpin/issues/98)): name the right
   upgrade command when cloudpin was installed globally with pnpm or Volta.
-- **Threat model** ([#84](https://github.com/paureis/cloudpin/issues/84)): what cloudpin protects against and what it
-  doesn't, in THREAT_MODEL.md.
 
 ## 1.3.0: Fix it, see it (release 2026-12-03)
 
@@ -36,6 +34,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   standalone cloudpin (a Node single executable). Moved from 1.2.0 on 2026-10-17.
 - **Wrangler auth profiles** ([#103](https://github.com/paureis/cloudpin/issues/103)): check whether Wrangler's
   new `--profile` and `wrangler auth activate` change the account a command uses, and resolve it if so.
+- **Threat model** ([#84](https://github.com/paureis/cloudpin/issues/84)): what cloudpin protects against and what it
+  doesn't, in THREAT_MODEL.md. Moved from 1.2.0 on 2026-10-18 (waiting for an outside review).
 
 ## Ideas (not scheduled yet)
 
