@@ -49,6 +49,6 @@ body:
     attributes:
       label: Versions
       description: Output of `cloudpin --version`, the CLI's version, your OS and Node.js version.
-      placeholder: cloudpin 1.1.0, vercel 50.35, Windows 11, Node 22.17
+      placeholder: cloudpin 1.1.1, vercel 50.35, Windows 11, Node 22.17
     validations:
       required: true

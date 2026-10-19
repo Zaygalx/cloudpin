@@ -44,6 +44,8 @@ An idea gets a version when work on it starts.
 
 ## Shipped
 
+- **1.1.1** (2026-10-18): security fix for Windows: CLIs run by their full path from PATH, never from the
+  current folder (GHSA-3cf7-5v5w-q5vr).
 - **1.1.0** (2026-10-16): the Claude Code plugin and read-only MCP server
   ([#15](https://github.com/paureis/cloudpin/issues/15)); review rules in CONTRIBUTING.md
   ([#88](https://github.com/paureis/cloudpin/issues/88)).

@@ -6,6 +6,18 @@ All notable changes to cloudpin are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-18
+
+A security fix for Windows. Please upgrade.
+
+### Security
+
+- Windows: cloudpin now runs each CLI it asks about (az, gh, vercel, aws, gcloud, kubectl, helm, supabase,
+  wrangler), and the command `cloudpin exec` runs, by its full path from PATH, skipping empty and relative PATH
+  entries. Before, Windows' own lookup checked the current folder first, so a file named like one of those CLIs
+  inside a repository could run in its place when cloudpin checked a command there
+  ([GHSA-3cf7-5v5w-q5vr](https://github.com/paureis/cloudpin/security/advisories/GHSA-3cf7-5v5w-q5vr)).
+
 ## [1.1.0] - 2026-10-16
 
 Claude Code gets a one-step plugin, and any MCP agent can ask cloudpin before it acts.
