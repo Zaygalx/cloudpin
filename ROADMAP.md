@@ -34,6 +34,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   showing whether the active accounts match the project.
 - **winget** ([#96](https://github.com/paureis/cloudpin/issues/96)): winget only accepts an `.exe`, so this needs a
   standalone cloudpin (a Node single executable). Moved from 1.2.0 on 2026-10-17.
+- **Wrangler auth profiles** ([#103](https://github.com/paureis/cloudpin/issues/103)): check whether Wrangler's
+  new `--profile` and `wrangler auth activate` change the account a command uses, and resolve it if so.
 
 ## Ideas (not scheduled yet)
 
