@@ -18,6 +18,30 @@ function resolveBin(bin: string, env: NodeJS.ProcessEnv): string | null {
 
 const notFoundMessage = (bin: string) => `${bin}: not found on PATH`;
 
+const NO_CWD_SEARCH = "NoDefaultCurrentDirectoryInExePath";
+
+/**
+ * The environment a child process gets. On Windows it also sets
+ * NoDefaultCurrentDirectoryInExePath, which makes cmd.exe and libuv skip the
+ * current folder when they look up a bare command name (Microsoft docs for
+ * NeedCurrentDirectoryForExePathW; libuv src/win/process.c). Spawning the full
+ * path only covers the first step: npm's .cmd shims (vercel, wrangler) then run
+ * a bare `node` when no node.exe sits beside the shim, and that lookup happens
+ * inside the child (GHSA-3cf7-5v5w-q5vr). Windows variable names are
+ * case-insensitive and Node keeps only one key per name, chosen by sort order,
+ * so any other casing is dropped before the canonical key is set.
+ */
+export function childEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
+  if (platform !== "win32") return env;
+  const upper = NO_CWD_SEARCH.toUpperCase();
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (k.toUpperCase() !== upper) out[k] = v;
+  }
+  out[NO_CWD_SEARCH] = "1";
+  return out;
+}
+
 /**
  * Runs a CLI without a shell. cross-spawn handles Windows .cmd shims (az,
  * vercel) by escaping each argument, so values taken from the user's command
@@ -31,7 +55,7 @@ export const realExec: Exec = (bin, args, env) =>
       return;
     }
     const child = spawn(file, args, {
-      env: { ...env, CLOUDPIN_ACTIVE: "1" },
+      env: childEnv({ ...env, CLOUDPIN_ACTIVE: "1" }),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -53,7 +77,9 @@ export const realExec: Exec = (bin, args, env) =>
 
 /**
  * Runs the user's command for `cloudpin exec`, resolved the same way as
- * realExec, and returns its exit code (127 when it can't be started).
+ * realExec, and returns its exit code (127 when it can't be started). It gets
+ * the same childEnv, so on Windows the command's own lookups skip the current
+ * folder too, as PowerShell and Git Bash already do.
  */
 export function runInherited(bin: string, args: string[], env: NodeJS.ProcessEnv, stdio: StdioOptions = "inherit"): Promise<number> {
   return new Promise((resolve) => {
@@ -63,7 +89,7 @@ export function runInherited(bin: string, args: string[], env: NodeJS.ProcessEnv
       resolve(127);
       return;
     }
-    const child = spawn(file, args, { env, stdio });
+    const child = spawn(file, args, { env: childEnv(env), stdio });
     child.on("error", (err) => {
       console.error(`cloudpin exec: ${err.message}`);
       resolve(127);

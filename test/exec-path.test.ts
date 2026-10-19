@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { realExec, runInherited } from "../src/exec.js";
+import { childEnv, realExec, runInherited } from "../src/exec.js";
 import { findOnPath, resolveCommand } from "../src/paths.js";
 import { tempDir } from "./tmp.js";
 
@@ -158,5 +158,69 @@ describe("spawning a bare name ignores the current folder", () => {
     const empty = tempDir("cloudpin-empty-");
     const code = await inFolder(planted, () => runInherited(PROBE, [], probeEnv(empty), "ignore"));
     expect(code).toBe(127);
+  });
+});
+
+// npm's Windows .cmd shims run a bare "node" when no node.exe sits beside the
+// shim, and cmd.exe looks a bare name up in the current folder before PATH
+// unless NoDefaultCurrentDirectoryInExePath is set. probeEnv deletes that
+// variable, so these tests fail if cloudpin does not set it for the child.
+const SHIM = "zzshimprobe";
+const HELPER = "zznodeprobe";
+
+function writeCmd(dir: string, name: string, body: string): void {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, name + ".cmd"), body);
+}
+
+function plantShim() {
+  const root = tempDir("cloudpin-shim-");
+  const planted = join(root, "repo");
+  const real = join(root, "bin");
+  writeCmd(real, SHIM, "@call " + HELPER + " %*\r\n@exit /b %errorlevel%\r\n");
+  writeCmd(real, HELPER, "@echo REAL\r\n@exit /b 42\r\n");
+  writeCmd(planted, HELPER, "@echo PLANTED\r\n@exit /b 41\r\n");
+  return { planted, env: probeEnv(real) };
+}
+
+describe.runIf(isWindows)("a shim on PATH that runs a bare name ignores the current folder", () => {
+  it("realExec: the shim's helper comes from PATH", async () => {
+    const { planted, env } = plantShim();
+    const res = await inFolder(planted, () => realExec(SHIM, [], env));
+    expect(res.stdout.trim()).toBe("REAL");
+    expect(res.code).toBe(42);
+  });
+
+  it("cloudpin exec (runInherited): the shim's helper comes from PATH", async () => {
+    const { planted, env } = plantShim();
+    const code = await inFolder(planted, () => runInherited(SHIM, [], env, "ignore"));
+    expect(code).toBe(42);
+  });
+});
+
+describe("childEnv", () => {
+  const NAME = "NoDefaultCurrentDirectoryInExePath";
+
+  it("tells Windows not to search the current folder", () => {
+    const out = childEnv({ PATH: "C:\bin", A: "1" }, "win32");
+    expect(out).toEqual({ PATH: "C:\bin", A: "1", [NAME]: "1" });
+  });
+
+  it("replaces any casing of the variable with a single key", () => {
+    const input = { nodefaultcurrentdirectoryinexepath: "", NODEFAULTCURRENTDIRECTORYINEXEPATH: "x", B: "2" };
+    const out = childEnv(input, "win32");
+    const keys = Object.keys(out).filter((k) => k.toUpperCase() === NAME.toUpperCase());
+    expect(keys).toEqual([NAME]);
+    expect(out[NAME]).toBe("1");
+    expect(out.B).toBe("2");
+    expect(input).toEqual({ nodefaultcurrentdirectoryinexepath: "", NODEFAULTCURRENTDIRECTORYINEXEPATH: "x", B: "2" });
+  });
+
+  it("leaves the environment alone on other platforms", () => {
+    for (const platform of ["linux", "darwin"] as const) {
+      const out = childEnv({ PATH: "/usr/bin" }, platform);
+      expect(out).toEqual({ PATH: "/usr/bin" });
+      expect(Object.keys(out).some((k) => k.toUpperCase() === NAME.toUpperCase())).toBe(false);
+    }
   });
 });

@@ -55,6 +55,8 @@ An idea gets a version when work on it starts.
 
 ## Shipped
 
+- **1.1.2** (2026-10-19): completes the Windows security fix: nothing cloudpin starts looks in the current folder,
+  including the `node` that npm-installed CLIs run (GHSA-3cf7-5v5w-q5vr).
 - **1.1.1** (2026-10-18): security fix for Windows: CLIs run by their full path from PATH, never from the
   current folder (GHSA-3cf7-5v5w-q5vr).
 - **1.1.0** (2026-10-16): the Claude Code plugin and read-only MCP server
