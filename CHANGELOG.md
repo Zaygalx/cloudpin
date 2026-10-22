@@ -60,6 +60,10 @@ All notable changes to cloudpin are listed here. The format follows
 - `cloudpin doctor` on Windows warns when PowerShell's execution policy would stop an installed agent hook, when
   PATH has `.` or another entry that is not a full path, and when Claude Code is older than 2.1.47, which ran hooks
   through cmd.exe (#108).
+- Wrangler auth profiles (#103): a command run with `--profile`, or in a folder bound by `wrangler auth activate`,
+  is checked against that profile's login and its own account cache, not the default one. When cloudpin can't
+  ask Wrangler about the profile (a `--profile` the folder isn't bound to, with no `account_id`,
+  `CLOUDFLARE_ACCOUNT_ID` or API token), it stops the command. `cloudpin explain` names the profile and why.
 
 ## [1.1.2] - 2026-10-19
 
