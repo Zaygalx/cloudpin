@@ -44,6 +44,9 @@ All notable changes to cloudpin are listed here. The format follows
 
 ### Fixed
 
+- Short flags joined with `=` (for example, `wrangler deploy -e=production`) were ignored by the shared
+  argument reader, so cloudpin could resolve the account without the requested environment (#118). It now
+  reads the joined form for both long and short flags.
 - Windows: Codex and Copilot CLI hooks work under PowerShell's `Restricted` and `AllSigned` execution policies (#108).
   Both agents run hooks through PowerShell, which starts npm's `cloudpin.ps1` for `cloudpin`, and those policies
   block that script, so the hook failed: Codex then ran commands unchecked and Copilot CLI denied every tool.

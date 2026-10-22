@@ -96,6 +96,7 @@ describe("cloudflare.resolve: which account a command uses", () => {
     const root = folder({ "wrangler.toml": `account_id = "${A}"\n[env.production]\naccount_id = "${B}"\n[env.staging]\nname = "s"\n` });
     expect(await resolve(["deploy", "--env", "production"], root)).toMatchObject({ identity: { account: B }, source: "account_id in wrangler.toml [env.production]" });
     expect(await resolve(["deploy", "-e", "staging"], root)).toMatchObject({ identity: { account: A } });
+    expect(await resolve(["deploy", "-e=production"], root)).toMatchObject({ identity: { account: B }, source: "account_id in wrangler.toml [env.production]" });
     expect(await resolve(["deploy"], root, { CLOUDFLARE_ENV: "production" })).toMatchObject({ identity: { account: B } });
     expect(await resolve(["deploy", "--env=staging"], root, { CLOUDFLARE_ENV: "production" })).toMatchObject({ identity: { account: A } });
   });

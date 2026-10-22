@@ -1,7 +1,7 @@
 /**
  * Reads a flag's value from an argument list, supporting `--flag value`,
- * `--flag=value` and short aliases. The last occurrence wins, matching how
- * most CLIs parse repeated flags.
+ * `--flag=value`, `-f value` and `-f=value`. The last occurrence wins, matching
+ * how most CLIs parse repeated flags.
  */
 export function flagValue(args: string[], names: string[]): string | undefined {
   let found: string | undefined;
@@ -11,7 +11,7 @@ export function flagValue(args: string[], names: string[]): string | undefined {
     for (const name of names) {
       if (arg === name && i + 1 < args.length) {
         found = args[i + 1];
-      } else if (name.startsWith("--") && arg.startsWith(`${name}=`)) {
+      } else if (arg.startsWith(`${name}=`)) {
         found = arg.slice(name.length + 1);
       }
     }
