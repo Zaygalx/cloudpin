@@ -23,6 +23,9 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   zip attached to each release.
 - **Upgrade advice for pnpm and Volta** ([#98](https://github.com/paureis/cloudpin/issues/98)): name the right
   upgrade command when cloudpin was installed globally with pnpm or Volta.
+- **Agent hooks under PowerShell's execution policy** ([#108](https://github.com/paureis/cloudpin/issues/108)):
+  Codex and Copilot CLI hooks on Windows start cloudpin through cmd.exe, so `Restricted` and `AllSigned` can't stop
+  them, and `cloudpin doctor` warns about what could still stop or bypass a hook there.
 
 ## 1.3.0: Fix it, see it (release 2026-12-03)
 
@@ -34,6 +37,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   standalone cloudpin (a Node single executable). Moved from 1.2.0 on 2026-10-17.
 - **Wrangler auth profiles** ([#103](https://github.com/paureis/cloudpin/issues/103)): check whether Wrangler's
   new `--profile` and `wrangler auth activate` change the account a command uses, and resolve it if so.
+- **Antigravity and Copilot CLI hook shells on Windows** ([#110](https://github.com/paureis/cloudpin/issues/110)):
+  find which shell each one starts hook commands with, and give Antigravity the Windows form from #108 if it needs it.
 - **Threat model** ([#84](https://github.com/paureis/cloudpin/issues/84)): what cloudpin protects against and what it
   doesn't, in THREAT_MODEL.md. Moved from 1.2.0 on 2026-10-18 (waiting for an outside review).
 

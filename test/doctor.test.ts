@@ -2,7 +2,8 @@ import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { FoundConfig } from "../src/config.js";
 import { doctorJson, formatDoctor, runDoctor, type Check, type DoctorDeps } from "../src/doctor.js";
-import { planInstall } from "../src/install.js";
+import type { AgentName } from "../src/hooks/agents.js";
+import { hookFile, planInstall } from "../src/install.js";
 import type { InstallMethod } from "../src/install-method.js";
 import { findOnPath } from "../src/paths.js";
 import type { Exec, ProviderDef, Resolution } from "../src/types.js";
@@ -445,5 +446,187 @@ describe("runDoctor: the Claude Code plugin", () => {
     const twice = one(await runDoctor(deps({ files })), "hook-twice");
     expect(twice.level).toBe("warn");
     expect(twice.fix).toBe("cloudpin uninstall-hook claude --user");
+  });
+});
+
+describe("runDoctor: Windows hook shells (#108)", () => {
+  const ROOT = "C:\\Windows";
+  const NPM = "C:\\npm";
+  const USER = "C:\\Users\\me";
+  const settings = (agent: AgentName) => hookFile(agent, "user", REPO, { USERPROFILE: USER });
+
+  interface Win {
+    files?: Record<string, string>;
+    env?: NodeJS.ProcessEnv;
+    policy?: string;
+    claude?: string;
+    pwsh?: boolean;
+    ps1?: boolean;
+    platform?: NodeJS.Platform;
+  }
+  function win(w: Win = {}) {
+    const files: Record<string, string> = { ...w.files };
+    if (w.ps1 !== false) files[`${NPM}\\cloudpin.ps1`] = "#!/usr/bin/env pwsh\n";
+    const d = deps({
+      platform: w.platform ?? "win32",
+      env: { HOME: undefined, USERPROFILE: USER, SystemRoot: ROOT, Path: `${ROOT}\\System32;${NPM}`, ...w.env },
+      files,
+    });
+    const calls: { bin: string; args: string[] }[] = [];
+    const base = d.guard.exec;
+    d.guard.exec = async (bin, args, env) => {
+      calls.push({ bin, args });
+      if ((bin === "powershell" || bin === "pwsh") && args.at(-1) === "Get-ExecutionPolicy") {
+        return { code: 0, stdout: `${w.policy ?? "RemoteSigned"}\r\n`, stderr: "" };
+      }
+      if (bin === "claude" && args[0] === "--version") {
+        return w.claude === undefined
+          ? { code: 127, stdout: "", stderr: "", notFound: true }
+          : { code: 0, stdout: `${w.claude} (Claude Code)\n`, stderr: "" };
+      }
+      return base(bin, args, env);
+    };
+    d.onPath = (name) => (name === "cloudpin" ? `${NPM}\\cloudpin.cmd` : name === "pwsh" && w.pwsh ? "C:\\pwsh\\pwsh.exe" : null);
+    return { d, calls };
+  }
+  const askedPolicy = (calls: { args: string[] }[]) => calls.some((c) => c.args.at(-1) === "Get-ExecutionPolicy");
+
+  describe("the PowerShell execution policy", () => {
+    it.each(["codex", "copilot"] as const)("warns when it blocks a bare %s hook, and the fix writes the Windows form", async (agent) => {
+      const { d } = win({ policy: "Restricted", files: { [settings(agent)]: planInstall(agent, null).content } });
+      const check = one(await runDoctor(d), "exec-policy");
+      expect(check.level).toBe("warn");
+      expect(check.title).toContain(`${agent} hook (personal)`);
+      expect(check.title).toContain("Restricted");
+      expect(check.fix).toBe(`cloudpin install-hook ${agent} --user`);
+    });
+
+    it("warns for Gemini CLI, which has no Windows-only command field, naming the policy as the fix", async () => {
+      const { d } = win({ policy: "AllSigned", files: { [settings("gemini")]: planInstall("gemini", null).content } });
+      const check = one(await runDoctor(d), "exec-policy");
+      expect(check.level).toBe("warn");
+      expect(check.title).toContain("AllSigned");
+      expect(check.fix).toContain("Set-ExecutionPolicy -Scope CurrentUser RemoteSigned");
+    });
+
+    it.each(["RemoteSigned", "Unrestricted", "Bypass"])("says nothing under %s", async (policy) => {
+      const { d } = win({ policy, files: { [settings("codex")]: planInstall("codex", null).content } });
+      expect(byId(await runDoctor(d), "exec-policy")).toEqual([]);
+    });
+
+    it("says nothing for hooks in the Windows form, or for agents that don't run hooks through PowerShell", async () => {
+      const files = {
+        [settings("codex")]: planInstall("codex", null, ROOT).content,
+        [settings("copilot")]: planInstall("copilot", null, ROOT).content,
+        [settings("cursor")]: planInstall("cursor", null).content,
+        [settings("claude")]: planInstall("claude", null).content,
+      };
+      const { d, calls } = win({ policy: "Restricted", files, claude: "2.1.304" });
+      expect(byId(await runDoctor(d), "exec-policy")).toEqual([]);
+      expect(askedPolicy(calls)).toBe(false);
+      // Control: the same files with one bare Codex hook warn.
+      const bare = win({ policy: "Restricted", files: { ...files, [settings("codex")]: planInstall("codex", null).content } });
+      expect(byId(await runDoctor(bare.d), "exec-policy")).toHaveLength(1);
+    });
+
+    it("asks pwsh when it is on PATH, as the agents do, else Windows PowerShell, without a profile", async () => {
+      for (const pwsh of [true, false]) {
+        const { d, calls } = win({ pwsh, files: { [settings("codex")]: planInstall("codex", null).content } });
+        await runDoctor(d);
+        expect(calls.filter((c) => c.args.at(-1) === "Get-ExecutionPolicy")).toEqual([
+          { bin: pwsh ? "pwsh" : "powershell", args: ["-NoProfile", "-NonInteractive", "-Command", "Get-ExecutionPolicy"] },
+        ]);
+      }
+    });
+
+    it("says nothing when the cloudpin on PATH has no cloudpin.ps1 beside it (Scoop's exe shim)", async () => {
+      const { d, calls } = win({ policy: "Restricted", ps1: false, files: { [settings("codex")]: planInstall("codex", null).content } });
+      expect(byId(await runDoctor(d), "exec-policy")).toEqual([]);
+      expect(askedPolicy(calls)).toBe(false);
+    });
+
+    it("is not checked off Windows", async () => {
+      const { d, calls } = win({ platform: "linux", policy: "Restricted", files: { [settings("codex")]: planInstall("codex", null).content } });
+      expect(byId(await runDoctor(d), "exec-policy")).toEqual([]);
+      expect(askedPolicy(calls)).toBe(false);
+    });
+  });
+
+  describe("PATH", () => {
+    it("warns about . and relative entries, which make every shell look in the current folder", async () => {
+      const Path = `${ROOT}\\System32;.;"C:\\Program Files\\Git\\cmd";;node_modules\\.bin;%USERPROFILE%\\bin;${NPM}`;
+      const check = one(await runDoctor(win({ env: { Path } }).d), "path-relative");
+      expect(check.level).toBe("warn");
+      expect(check.detail?.join("\n")).toContain('".", "node_modules\\.bin", "%USERPROFILE%\\bin"');
+    });
+
+    it("says nothing for absolute, quoted or empty entries, or off Windows", async () => {
+      const Path = `${ROOT}\\System32;"C:\\Program Files\\Git\\cmd";;${NPM};`;
+      expect(byId(await runDoctor(win({ env: { Path } }).d), "path-relative")).toEqual([]);
+      expect(byId(await runDoctor(win({ platform: "linux", env: { Path: ".;x" } }).d), "path-relative")).toEqual([]);
+    });
+  });
+
+  describe("Claude Code's version", () => {
+    const hook = { [settings("claude")]: planInstall("claude", null).content };
+
+    it("warns when Claude Code is older than 2.1.47, which ran hooks through cmd.exe", async () => {
+      const check = one(await runDoctor(win({ files: hook, claude: "2.1.46" }).d), "claude-version");
+      expect(check.level).toBe("warn");
+      expect(check.title).toContain("2.1.46");
+      expect(check.fix).toContain("claude update");
+    });
+
+    it.each(["2.1.47", "2.1.304", "2.10.0", "3.0.0"])("says nothing for %s", async (claude) => {
+      expect(byId(await runDoctor(win({ files: hook, claude }).d), "claude-version")).toEqual([]);
+    });
+
+    it("counts the plugin as a hook, and asks nothing when no Claude Code hook is installed", async () => {
+      const plugin = { [settings("claude")]: JSON.stringify({ enabledPlugins: { "cloudpin@cloudpin": true } }) };
+      expect(byId(await runDoctor(win({ files: plugin, claude: "2.0.0" }).d), "claude-version")).toHaveLength(1);
+      const { d, calls } = win({ claude: "2.0.0" });
+      expect(byId(await runDoctor(d), "claude-version")).toEqual([]);
+      expect(calls.some((c) => c.bin === "claude")).toBe(false);
+    });
+
+    it("says nothing when claude is not on PATH, or off Windows", async () => {
+      expect(byId(await runDoctor(win({ files: hook }).d), "claude-version")).toEqual([]);
+      expect(byId(await runDoctor(win({ files: hook, claude: "2.1.0", platform: "linux" }).d), "claude-version")).toEqual([]);
+    });
+  });
+
+  describe("SystemRoot", () => {
+    it("warns when it is not a plain folder path, since install-hook then writes the bare command", async () => {
+      const check = one(await runDoctor(win({ env: { SystemRoot: "C:\\My Windows" } }).d), "hook-shell");
+      expect(check.level).toBe("warn");
+      expect(JSON.stringify(check)).not.toContain("My Windows"); // names the variable, not its value
+      expect(byId(await runDoctor(win().d), "hook-shell")).toEqual([]);
+      expect(byId(await runDoctor(win({ platform: "linux", env: { SystemRoot: undefined } }).d), "hook-shell")).toEqual([]);
+    });
+  });
+
+  describe("hooks written before 1.2.0", () => {
+    it("calls a bare Codex or Copilot hook out of date on Windows, and current elsewhere", async () => {
+      for (const agent of ["codex", "copilot"] as const) {
+        const files = { [settings(agent)]: planInstall(agent, null).content };
+        const hook = one(await runDoctor(win({ files }).d), "hook");
+        expect(hook.level).toBe("warn");
+        expect(hook.fix).toBe(`cloudpin install-hook ${agent} --user`);
+        expect(hook.detail?.join("\n")).toMatch(/Windows/);
+        expect(one(await runDoctor(win({ files, platform: "linux" }).d), "hook").level).toBe("ok");
+        const upgraded = { [settings(agent)]: planInstall(agent, null, ROOT).content };
+        expect(one(await runDoctor(win({ files: upgraded }).d), "hook").level).toBe("ok");
+      }
+    });
+
+    it("calls a hook written where SystemRoot is C:\\WINDOWS current on a machine with C:\\Windows", async () => {
+      for (const agent of ["codex", "copilot"] as const) {
+        const files = { [settings(agent)]: planInstall(agent, null, "C:\\WINDOWS").content };
+        expect(one(await runDoctor(win({ files }).d), "hook").level).toBe("ok");
+        // Control: another drive is really another cmd.exe, so it is out of date.
+        const other = { [settings(agent)]: planInstall(agent, null, "D:\\Windows").content };
+        expect(one(await runDoctor(win({ files: other }).d), "hook").level).toBe("warn");
+      }
+    });
   });
 });

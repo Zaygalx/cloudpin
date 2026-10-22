@@ -303,6 +303,14 @@ cloudpin reads the whole command line the agent is about to run, so it also catc
 (`GH_TOKEN=$(cat file) gh ...`), the command is stopped with the reason. It can't see inside a script file the agent
 writes and runs later (`bash deploy.sh`).
 
+**On Windows**, Codex and Copilot CLI run hooks through PowerShell, whose `Restricted` and `AllSigned` execution
+policies block npm's `cloudpin.ps1`. So for those two, `install-hook` also writes a Windows command that starts cloudpin
+through cmd.exe, in a field only Windows reads (Codex 0.131.0 or later). A hook installed before cloudpin 1.2.0
+doesn't have it: re-run `cloudpin install-hook <agent>` after upgrading (Codex runs the changed hook once you review it in
+`/hooks`). Gemini CLI has no such field, so its hook needs a policy that runs local scripts, such as `RemoteSigned`.
+`cloudpin doctor` warns about each of these, about a `.` or other relative entry in PATH, and about Claude Code
+older than 2.1.47.
+
 ### Claude Code plugin
 
 One install gives Claude Code the hook, two read-only tools it can call before acting, and a short skill telling it to

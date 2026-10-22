@@ -36,6 +36,22 @@ All notable changes to cloudpin are listed here. The format follows
   (`PNPM_HOME`, `PNPM_CONFIG_GLOBAL_DIR`, `VOLTA_HOME`, `BUN_INSTALL` and the like); one moved any other way, such
   as in a config file, still reads as npm.
 
+### Fixed
+
+- Windows: Codex and Copilot CLI hooks work under PowerShell's `Restricted` and `AllSigned` execution policies (#108).
+  Both agents run hooks through PowerShell, which starts npm's `cloudpin.ps1` for `cloudpin`, and those policies
+  block that script, so the hook failed: Codex then ran commands unchecked and Copilot CLI denied every tool.
+  `cloudpin install-hook codex` and `install-hook copilot` now also write a Windows command that starts cloudpin
+  through cmd.exe, which no execution policy stops, into the agent's Windows-only field: Codex's `commandWindows`
+  (Codex 0.131.0 and later; older versions ignore it) and Copilot CLI's `powershell` key. It also hardens how the hook
+  finds cloudpin and Node on Windows. The fields macOS and Linux read are unchanged, so a committed hook file keeps
+  working there. Re-run `cloudpin install-hook <agent>` (with `--user` if that is where it is) to update a hook
+  installed before; it keeps your other hooks, and Codex runs the changed hook once you review it in `/hooks`.
+  Gemini CLI has no Windows-only field, so its hook stays as it was.
+- `cloudpin doctor` on Windows warns when PowerShell's execution policy would stop an installed agent hook, when
+  PATH has `.` or another entry that is not a full path, and when Claude Code is older than 2.1.47, which ran hooks
+  through cmd.exe (#108).
+
 ## [1.1.2] - 2026-10-19
 
 Completes the 1.1.1 security fix for Windows. Please upgrade.

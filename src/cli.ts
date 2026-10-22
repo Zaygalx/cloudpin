@@ -17,7 +17,15 @@ import { guard, type GuardDeps } from "./guard.js";
 import { AGENTS, runHook, type AgentName } from "./hooks/agents.js";
 import { flagValue } from "./args.js";
 import { addEnvironment, discover, renderConfig, type FoundIdentity } from "./init.js";
-import { claudePluginEnabled, hookFile, installedHooks, planInstall, planUninstall } from "./install.js";
+import {
+  afterInstallNote,
+  claudePluginEnabled,
+  hookFile,
+  installedHooks,
+  planInstall,
+  planUninstall,
+  windowsRoot,
+} from "./install.js";
 import { runningInstallMethod } from "./install-method.js";
 import { cacheDir, findOnPath, isExecutableFile } from "./paths.js";
 import { shellInit } from "./shell-init.js";
@@ -275,7 +283,7 @@ async function hookSetup(action: "install" | "uninstall", agent: string | undefi
         console.log("cloudpin: the cloudpin plugin already guards Claude Code here; uninstall the plugin first if you want the settings hook instead.");
         return 0;
       }
-      const plan = planInstall(name, existing);
+      const plan = planInstall(name, existing, windowsRoot(process.env, process.platform));
       if (plan.alreadyInstalled) {
         console.log(`cloudpin: the ${name} hook is already in ${path}`);
         return 0;
@@ -286,6 +294,8 @@ async function hookSetup(action: "install" | "uninstall", agent: string | undefi
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, plan.content);
       console.log(`cloudpin: installed${existing !== null ? ` (previous file saved as ${path}.cloudpin-backup)` : ""}.`);
+      const note = afterInstallNote(name, plan.content);
+      if (note !== null) console.log(note);
     } else {
       const plan = planUninstall(name, existing);
       if (!plan.found) {

@@ -1,6 +1,14 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { claudePluginEnabled, hookFile, installedHooks, planInstall, planUninstall } from "../src/install.js";
+import {
+  afterInstallNote,
+  claudePluginEnabled,
+  hookFile,
+  installedHooks,
+  planInstall,
+  planUninstall,
+  windowsRoot,
+} from "../src/install.js";
 import { providers } from "../src/providers/index.js";
 
 const ROOT = "/repo";
@@ -188,6 +196,140 @@ describe("planUninstall", () => {
   it("reports when nothing is installed", () => {
     expect(planUninstall("cursor", JSON.stringify({ version: 1, hooks: {} })).found).toBe(false);
     expect(planUninstall("cursor", null).found).toBe(false);
+  });
+});
+
+describe("windowsRoot (#108)", () => {
+  it("is SystemRoot on Windows, whatever the variable's casing, without a trailing backslash", () => {
+    expect(windowsRoot({ SystemRoot: "C:\\Windows" }, "win32")).toBe("C:\\Windows");
+    expect(windowsRoot({ SYSTEMROOT: "D:\\WINNT\\" }, "win32")).toBe("D:\\WINNT");
+  });
+
+  it("is null off Windows, so macOS and Linux write the bare command", () => {
+    expect(windowsRoot({ SystemRoot: "C:\\Windows" }, "linux")).toBeNull();
+    expect(windowsRoot({ SystemRoot: "C:\\Windows" }, "darwin")).toBeNull();
+  });
+
+  // Anything cmd.exe or PowerShell could split or read as syntax falls back to the bare command.
+  it.each([undefined, "", "Windows", "\\Windows", "C:Windows", "\\\\server\\share\\Windows", "C:\\My Windows", "C:\\Win&dows", 'C:\\Win"dows', "C:\\Win%x%", "C:\\Win(1)", "C:\\Win;x", "C:/Windows"])(
+    "is null for SystemRoot %j",
+    (value) => {
+      expect(windowsRoot(value === undefined ? {} : { SystemRoot: value }, "win32")).toBeNull();
+    },
+  );
+});
+
+describe("planInstall on Windows (#108)", () => {
+  const WIN = "C:\\Windows";
+  const form = (agent: string, root = WIN) =>
+    `${root}\\System32\\cmd.exe /d /s /c "set NoDefaultCurrentDirectoryInExePath=1&& cloudpin hook ${agent}"`;
+
+  it("writes Codex's commandWindows next to the portable command", () => {
+    const out = JSON.parse(planInstall("codex", null, WIN).content);
+    expect(out.hooks.PreToolUse[0]).toEqual({
+      matcher: "Bash",
+      hooks: [{ type: "command", command: "cloudpin hook codex", commandWindows: form("codex") }],
+    });
+  });
+
+  it("writes Copilot's powershell key and leaves its bash key bare", () => {
+    const entry = JSON.parse(planInstall("copilot", null, WIN).content).hooks.preToolUse[0];
+    expect(entry).toEqual({
+      type: "command",
+      matcher: "bash|powershell",
+      bash: "cloudpin hook copilot",
+      powershell: form("copilot"),
+      timeoutSec: 60,
+    });
+  });
+
+  it.each(["claude", "gemini", "cursor", "antigravity"] as const)("leaves %s bare", (agent) => {
+    expect(planInstall(agent, null, WIN).content).toBe(planInstall(agent, null).content);
+  });
+
+  const theirs = { type: "command", command: "lint" };
+  const bareCodex = {
+    model: "x",
+    hooks: {
+      PreToolUse: [
+        { matcher: "Bash", hooks: [theirs, { type: "command", command: "cloudpin hook codex" }] },
+        { matcher: "Edit", hooks: [theirs] },
+      ],
+      PostToolUse: [{ hooks: [theirs] }],
+    },
+  };
+
+  it("upgrades a bare Codex entry in place, keeps the user's hooks, and is then idempotent", () => {
+    const plan = planInstall("codex", JSON.stringify(bareCodex, null, 2), WIN);
+    expect(plan.alreadyInstalled).toBe(false);
+    const expected = structuredClone(bareCodex);
+    (expected.hooks.PreToolUse[0]!.hooks[1] as Record<string, string>).commandWindows = form("codex");
+    expect(JSON.parse(plan.content)).toEqual(expected);
+    const again = planInstall("codex", plan.content, WIN);
+    expect(again).toEqual({ content: plan.content, alreadyInstalled: true });
+  });
+
+  it("replaces Codex's command_windows alias instead of adding a second field", () => {
+    const old = { hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "cloudpin hook codex", command_windows: "cloudpin hook codex" }] }] } };
+    const hook = JSON.parse(planInstall("codex", JSON.stringify(old), WIN).content).hooks.PreToolUse[0].hooks[0];
+    expect(hook).toEqual({ type: "command", command: "cloudpin hook codex", commandWindows: form("codex") });
+  });
+
+  it("upgrades a bare Copilot entry in place, and is then idempotent", () => {
+    const bare = planInstall("copilot", null).content;
+    const plan = planInstall("copilot", bare, WIN);
+    expect(plan.alreadyInstalled).toBe(false);
+    expect(plan.content).toBe(planInstall("copilot", null, WIN).content);
+    expect(planInstall("copilot", plan.content, WIN).alreadyInstalled).toBe(true);
+  });
+
+  it("rewrites a Windows form made for another SystemRoot", () => {
+    const other = planInstall("codex", null, "D:\\Windows").content;
+    const plan = planInstall("codex", other, WIN);
+    expect(plan.alreadyInstalled).toBe(false);
+    expect(plan.content).toBe(planInstall("codex", null, WIN).content);
+  });
+
+  it("treats a form that differs only in the case of SystemRoot as current (Windows paths ignore case)", () => {
+    // Rewriting it would change Codex's trust hash, and the next machine would flip it back.
+    for (const agent of ["codex", "copilot"] as const) {
+      const upper = planInstall(agent, null, "C:\\WINDOWS").content;
+      expect(upper).toContain("C:\\\\WINDOWS\\\\System32"); // control: the file holds the upper-case form
+      expect(planInstall(agent, upper, WIN)).toEqual({ content: upper, alreadyInstalled: true });
+    }
+  });
+
+  it("names the Codex /hooks review after writing the Windows form, and nothing otherwise", () => {
+    const note = "cloudpin: Codex runs the changed hook only after you review it in /hooks.";
+    expect(afterInstallNote("codex", planInstall("codex", null, WIN).content)).toBe(note);
+    expect(afterInstallNote("codex", planInstall("codex", JSON.stringify(bareCodex), WIN).content)).toBe(note);
+    expect(afterInstallNote("codex", planInstall("codex", null).content)).toBeNull();
+    expect(afterInstallNote("copilot", planInstall("copilot", null, WIN).content)).toBeNull();
+    expect(afterInstallNote("claude", planInstall("claude", null).content)).toBeNull();
+  });
+
+  it("keeps the Windows form off Windows or without a usable SystemRoot (a teammate's re-run changes nothing)", () => {
+    for (const agent of ["codex", "copilot"] as const) {
+      const win = planInstall(agent, null, WIN).content;
+      expect(win).toContain("cmd.exe"); // control: this is the Windows form
+      expect(planInstall(agent, win)).toEqual({ content: win, alreadyInstalled: true });
+      expect(planInstall(agent, win, windowsRoot({}, "win32"))).toEqual({ content: win, alreadyInstalled: true });
+    }
+  });
+
+  it("is recognised by status and removed by uninstall-hook, like the bare form", () => {
+    const env = { HOME };
+    for (const agent of ["codex", "copilot"] as const) {
+      const content = planInstall(agent, null, WIN).content;
+      expect(installedHooks((p) => (p === hookFile(agent, "user", ROOT, env) ? content : null), ROOT, env)).toEqual([`${agent} (personal)`]);
+    }
+    const codex = planInstall("codex", JSON.stringify(bareCodex), WIN).content;
+    const removed = JSON.parse(planUninstall("codex", codex).content!);
+    expect(removed.hooks.PreToolUse).toEqual([
+      { matcher: "Bash", hooks: [theirs] },
+      { matcher: "Edit", hooks: [theirs] },
+    ]);
+    expect(planUninstall("copilot", planInstall("copilot", null, WIN).content)).toEqual({ found: true, content: null });
   });
 });
 
