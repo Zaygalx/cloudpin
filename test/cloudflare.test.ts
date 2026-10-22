@@ -31,8 +31,11 @@ function folder(files: Record<string, string> = {}) {
   return root;
 }
 
+// An empty home folder, so no test reads the real Wrangler profiles (#103).
+const noProfiles = tempDir("cloudpin-wrangler-home-");
+
 const resolve = (args: string[], cwd: string, env: NodeJS.ProcessEnv = {}, exec: Exec = fake().exec) =>
-  cloudflare.resolve({ args, env, cwd, bin: "wrangler" }, exec);
+  cloudflare.resolve({ args, env: { HOME: noProfiles, ...env }, cwd, bin: "wrangler" }, exec);
 
 describe("wrangler.toml account_id", () => {
   it("reads the top-level value and each [env.NAME] value", () => {
