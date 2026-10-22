@@ -95,14 +95,16 @@ The source layout is the table in `AGENTS.md`. `src/exec.ts` is the only place t
 - Switching branches never changes the owner's installed cloudpin; only `node scripts/dogfood.mjs install` does.
 - Before any `gh` call that writes, confirm `gh auth status --active` shows `paureis`.
 - **Releasing needs the owner:** in one `release/x.y.z` PR, bump the version
-  (`package.json` and `plugin/.claude-plugin/plugin.json`; `test/plugin.test.ts` fails until they match) and update
+  (`package.json`, `plugin/.claude-plugin/plugin.json` and both `version` fields in `server.json`; `test/plugin.test.ts`
+  and `test/release-docs.test.ts` fail until they match) and update
   the docs (owner rule): the CHANGELOG entry, README's `**Latest release: x.y.z**` line, ROADMAP's Shipped list, the
   bug-report form's example version, and any README/DESIGN/AGENTS text the release changes;
   `test/release-docs.test.ts` fails until the first four match `package.json`. Run Nightly on the branch, merge, then
   push the `vX.Y.Z` tag: `release.yml` stages the version on npm with provenance (trusted publishing, no token); the
   owner waits for "Validating" to end, then approves under npmjs.com > Staged Packages. Fallback if the workflow
   can't publish: start `npm publish --access public --auth-type=web` in the Terminal panel (`npm login
-  --auth-type=web` first if npm says 404).
+  --auth-type=web` first if npm says 404). Once npm serves the approved version, run
+  `gh workflow run mcp-registry.yml -f tag=vX.Y.Z` to list it in the MCP Registry (`-f dry_run=true` validates only).
 
 ## Editing
 

@@ -20,6 +20,13 @@ describe(`docs for release ${version}`, () => {
     expect(read("ROADMAP.md")).toContain(`- **${version}**`);
   });
 
+  // The MCP Registry listing (#111): the server and its npm package carry the release's version.
+  it("server.json has it, for the server and its npm package", () => {
+    const server = JSON.parse(read("server.json")) as { version: string; packages: { version: string }[] };
+    expect(server.version).toBe(version);
+    expect(server.packages.map((p) => p.version)).toEqual([version]);
+  });
+
   it("the bug report form suggests it as the example version", () => {
     expect(read(".github/ISSUE_TEMPLATE/bug_report.yml")).toContain(`cloudpin ${version},`);
   });

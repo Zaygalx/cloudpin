@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { explain } from "./explain.js";
 import type { GuardDeps } from "./guard.js";
 import { installedHooks } from "./install.js";
-import type { McpTool } from "./mcp.js";
+import { createHandler, type McpTool } from "./mcp.js";
 import { collectStatus } from "./status.js";
 
 export interface ToolContext {
@@ -19,6 +19,26 @@ function folder(ctx: ToolContext, value: unknown): string {
   const dir = resolve(ctx.cwd, value);
   if (!ctx.isDir(dir)) throw new Error(`folder not found: ${dir}`);
   return dir;
+}
+
+/**
+ * What the server tells every agent at initialize (#111), the plugin skill's rules in a few lines for agents
+ * without it. Codex reads this as server-wide guidance and asks that the first 512 characters stand alone
+ * (learn.chatgpt.com/docs/extend/mcp, "Server instructions"); a test holds them to that.
+ */
+export const CLOUDPIN_INSTRUCTIONS = [
+  "cloudpin keeps cloud CLIs (az, aws, gcloud, vercel, gh, kubectl, helm, supabase, wrangler) on the accounts .cloudpin.yml pins.",
+  "Call cloudpin_status before cloud work.",
+  "Before running any command that uses a cloud CLI, call cloudpin_check with the exact command line; run it only if the verdict is allow.",
+  "On block or ask, stop and tell the user the reason and the fix.",
+  "Never work around a block (another account, CLOUDPIN_SKIP, an environment variable, a script file).",
+  "This server never runs or switches anything.",
+].join(" ") +
+  "\n\nSwitching accounts and editing .cloudpin.yml are the user's call. If this server may not be running in the project folder, pass it as cwd.";
+
+/** The handler `cloudpin mcp` serves: both tools, and the instructions at initialize. */
+export function cloudpinHandler(deps: GuardDeps, ctx: ToolContext, version: string): (line: string) => Promise<string | null> {
+  return createHandler({ version, tools: cloudpinTools(deps, ctx), instructions: CLOUDPIN_INSTRUCTIONS });
 }
 
 /**

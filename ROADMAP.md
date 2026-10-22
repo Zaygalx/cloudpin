@@ -26,6 +26,11 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
 - **Agent hooks under PowerShell's execution policy** ([#108](https://github.com/paureis/cloudpin/issues/108)):
   Codex and Copilot CLI hooks on Windows start cloudpin through cmd.exe, so `Restricted` and `AllSigned` can't stop
   them, and `cloudpin doctor` warns about what could still stop or bypass a hook there.
+- **MCP everywhere** ([#111](https://github.com/paureis/cloudpin/issues/111)): the MCP server tells every agent how
+  to use it, setup snippets for Codex, Cursor, VS Code, Gemini CLI, Windsurf and Claude Desktop, and a listing in
+  the official MCP Registry as `io.github.paureis/cloudpin`.
+- **A 90-second demo** ([#113](https://github.com/paureis/cloudpin/issues/113)): an agent in Cursor stopped before it
+  runs a command on the wrong account, for the release announcement.
 
 ## 1.3.0: Fix it, see it (release 2026-12-03)
 
@@ -41,6 +46,11 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   find which shell each one starts hook commands with, and give Antigravity the Windows form from #108 if it needs it.
 - **Threat model** ([#84](https://github.com/paureis/cloudpin/issues/84)): what cloudpin protects against and what it
   doesn't, in THREAT_MODEL.md. Moved from 1.2.0 on 2026-10-18 (waiting for an outside review).
+- **MCP: `cloudpin_switch_plan` and `cloudpin_doctor` tools** ([#112](https://github.com/paureis/cloudpin/issues/112)):
+  two more read-only tools: the commands you would run to move each CLI to the pinned account (from `cloudpin
+  switch`, nothing run), and `cloudpin doctor`'s report, so an agent can say why the hook isn't guarding.
+- **Write-up** ([#114](https://github.com/paureis/cloudpin/issues/114)): why AI agents need an account guardrail, and
+  how cloudpin does it, with numbers from the test suite.
 
 ## Ideas (not scheduled yet)
 

@@ -25,6 +25,12 @@ All notable changes to cloudpin are listed here. The format follows
   and `^`). Like every install, it edits no shell profile and installs no agent hook.
 - Each GitHub Release also has `cloudpin-X.Y.Z-windows.zip` (#17), the file the Scoop bucket installs: the package's
   files plus their production `node_modules`, listed in `SHA256SUMS` and covered by the same signed attestation.
+- The MCP server for every agent (#111): `cloudpin mcp` now hands an agent short instructions when it connects (call
+  `cloudpin_status` before cloud work and `cloudpin_check` before a cloud CLI command; on a block, stop and tell the
+  user the reason and the fix; never work around it), which Codex and Gemini CLI add to the model's instructions.
+  [docs/mcp.md](docs/mcp.md) shows how to add the server to Codex, Cursor, VS Code, Gemini CLI, Windsurf, Claude
+  Desktop or any stdio client. The server stays read-only. Each release is also listed in the official MCP Registry
+  as `io.github.paureis/cloudpin` (`server.json`), by a manual workflow run once its npm version is live.
 
 ### Changed
 
@@ -48,6 +54,9 @@ All notable changes to cloudpin are listed here. The format follows
   working there. Re-run `cloudpin install-hook <agent>` (with `--user` if that is where it is) to update a hook
   installed before; it keeps your other hooks, and Codex runs the changed hook once you review it in `/hooks`.
   Gemini CLI has no Windows-only field, so its hook stays as it was.
+- `cloudpin mcp` answered `initialize` for an unknown protocol version with 2026-07-28, a revision that has no
+  `initialize`. It now answers with 2025-11-25, the newest revision that has one, and no longer lists 2026-07-28
+  (#111).
 - `cloudpin doctor` on Windows warns when PowerShell's execution policy would stop an installed agent hook, when
   PATH has `.` or another entry that is not a full path, and when Claude Code is older than 2.1.47, which ran hooks
   through cmd.exe (#108).

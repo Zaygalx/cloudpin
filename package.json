@@ -2,6 +2,7 @@
   "name": "cloudpin",
   "version": "1.1.2",
   "description": "A seatbelt for your cloud CLIs: stops you, or your AI agent, from running commands on the wrong account.",
+  "mcpName": "io.github.paureis/cloudpin",
   "type": "module",
   "bin": {
     "cloudpin": "dist/cli.js"

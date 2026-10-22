@@ -15,8 +15,15 @@ export interface McpTool {
   call(args: Record<string, unknown>): Promise<unknown>;
 }
 
-/** Newest first. Claude Code's newer client offers 2026-07-28 and falls back otherwise (code.claude.com, mcp). */
-export const PROTOCOL_VERSIONS: readonly string[] = ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+/**
+ * The initialize-based revisions this server speaks, newest first. 2026-07-28 is not one: it has no initialize
+ * (versioning.mdx calls 2025-11-25 and earlier "legacy", the ones with the initialize handshake), and its clients
+ * probe with server/discover, which this server answers with -32601, then fall back to initialize
+ * (basic/transports/stdio.mdx, "Backward Compatibility"). A client that asks initialize for 2026-07-28 anyway, or for
+ * a version not listed, gets 2025-11-25: 2025-11-25's lifecycle.mdx says a server that doesn't support the requested
+ * version MUST answer with another it supports, and SHOULD pick its latest.
+ */
+export const PROTOCOL_VERSIONS: readonly string[] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 type Id = string | number | null;
 interface Message {
@@ -35,7 +42,7 @@ class RpcError extends Error {
 }
 
 /** Answers one line: the JSON reply, or null for a notification (which never gets one). */
-export function createHandler(opts: { version: string; tools: McpTool[] }): (line: string) => Promise<string | null> {
+export function createHandler(opts: { version: string; tools: McpTool[]; instructions?: string }): (line: string) => Promise<string | null> {
   const reply = (id: Id, body: { result: unknown } | { error: { code: number; message: string } }) =>
     JSON.stringify({ jsonrpc: "2.0", id, ...body });
 
@@ -44,7 +51,11 @@ export function createHandler(opts: { version: string; tools: McpTool[] }): (lin
       case "initialize": {
         const asked = params.protocolVersion;
         const protocolVersion = typeof asked === "string" && PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0];
-        return { protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "cloudpin", version: opts.version } };
+        // InitializeResult.instructions, "a hint to the model" that clients MAY add to the system prompt, is in
+        // every initialize-based revision, 2024-11-05 to 2025-11-25 (schema/<version>/schema.ts in
+        // github.com/modelcontextprotocol/modelcontextprotocol). 2026-07-28 carries it in server/discover instead.
+        const instructions = opts.instructions === undefined ? {} : { instructions: opts.instructions };
+        return { protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "cloudpin", version: opts.version }, ...instructions };
       }
       case "ping":
         return {};

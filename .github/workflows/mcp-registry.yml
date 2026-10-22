@@ -1,0 +1,106 @@
+name: MCP Registry
+
+# Lists a release in the official MCP Registry as io.github.paureis/cloudpin
+# (#111). Run it by hand, for the release's tag, after the npm version is
+# approved: release.yml only stages it on npm, and the registry checks the live
+# package's mcpName when it accepts server.json. A dry run checks that the tag,
+# package.json and server.json agree and validates server.json with the
+# registry; it skips npm, login and publish, so it works before npm approval.
+#
+# Sources (read 2026-10-21): github.com/modelcontextprotocol/registry,
+# docs/modelcontextprotocol-io/github-actions.mdx (OIDC needs id-token: write,
+# no secret), docs/reference/cli/commands.md (validate, login github-oidc,
+# publish), v1.8.1's internal/api/handlers/v0/validate.go (/v0/validate runs
+# schema and semantic checks; the npm mcpName check runs on publish), and
+# release v1.8.1's registry_1.8.1_checksums.txt.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to list, e.g. v1.2.0 (outside a dry run, its npm version must be approved first)
+        required: true
+        type: string
+      dry_run:
+        description: Only check the versions and validate server.json, which works before the npm version is approved; skip npm, login and publish
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-registry
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # GitHub OIDC login: the registry grants io.github.<repository owner>/*.
+      id-token: write
+    env:
+      TAG: ${{ inputs.tag }}
+      MCP_PUBLISHER_VERSION: 1.8.1
+      # mcp-publisher_linux_amd64.tar.gz in registry_1.8.1_checksums.txt.
+      MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+    steps:
+      - name: Tag looks like a release
+        run: |
+          if ! printf '%s' "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag must look like v1.2.0, got: $TAG"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - name: Tag, package.json and server.json agree
+        id: meta
+        run: |
+          if [ ! -f server.json ]; then echo "::error::$TAG has no server.json (it arrived in 1.2.0)"; exit 1; fi
+          version="${TAG#v}"
+          fail=0
+          for got in "$(jq -r .version package.json)" "$(jq -r .version server.json)" $(jq -r '.packages[].version' server.json); do
+            if [ "$got" != "$version" ]; then echo "::error::$TAG but found version $got in package.json or server.json"; fail=1; fi
+          done
+          name="$(jq -r .name server.json)"
+          if [ "$(jq -r .mcpName package.json)" != "$name" ]; then echo "::error::package.json mcpName is not $name"; fail=1; fi
+          identifier="$(jq -r '.packages[0].identifier' server.json)"
+          if [ "$identifier" != "$(jq -r .name package.json)" ]; then echo "::error::server.json lists npm package $identifier, not this one"; fail=1; fi
+          [ "$fail" = 0 ] || exit 1
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "identifier=$identifier" >> "$GITHUB_OUTPUT"
+      - name: Install mcp-publisher (pinned, checked by SHA-256)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/mcp-publisher.tar.gz" \
+            "https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "$MCP_PUBLISHER_SHA256  $RUNNER_TEMP/mcp-publisher.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/mcp-publisher.tar.gz" -C "$RUNNER_TEMP" mcp-publisher
+          "$RUNNER_TEMP/mcp-publisher" --version
+      # Sends server.json to the registry's /v0/validate; needs no login, and
+      # doesn't look at npm, so it runs in a dry run before approval too.
+      - name: Validate server.json
+        run: '"$RUNNER_TEMP/mcp-publisher" validate server.json'
+      # The registry reads mcpName from registry.npmjs.org/<package>/<version>
+      # (internal/validators/registries/npm.go); a staged version isn't there yet.
+      - name: npm serves this version with the same mcpName
+        if: ${{ !inputs.dry_run }}
+        env:
+          NAME: ${{ steps.meta.outputs.name }}
+          IDENTIFIER: ${{ steps.meta.outputs.identifier }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          live="$(npm view "$IDENTIFIER@$VERSION" mcpName 2>/dev/null || true)"
+          if [ "$live" != "$NAME" ]; then
+            echo "::error::npm doesn't serve $IDENTIFIER@$VERSION with mcpName $NAME (got: '$live'). Approve the npm version first (npmjs.com > Staged Packages), then run this again."
+            exit 1
+          fi
+          echo "npm serves $IDENTIFIER@$VERSION with mcpName $live"
+      - name: Log in with GitHub OIDC
+        if: ${{ !inputs.dry_run }}
+        run: '"$RUNNER_TEMP/mcp-publisher" login github-oidc'
+      - name: Publish to the MCP Registry
+        if: ${{ !inputs.dry_run }}
+        run: '"$RUNNER_TEMP/mcp-publisher" publish server.json'
