@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cachedExec } from "../src/cache.js";
@@ -7,55 +7,11 @@ import { profileForFolder } from "../src/providers/wrangler-profiles.js";
 import { isReadOnly } from "../src/readonly.js";
 import type { Exec } from "../src/types.js";
 import { tempDir } from "./tmp.js";
+import { A, B, bound, cacheFile, fake, folder, physical, profileHome, resolve, whoami } from "./wrangler-fixtures.js";
 
 // Wrangler auth profiles (#103), from workers-sdk wrangler@4.151.3: packages/workers-auth/src/profiles.ts
 // (resolve, getProfileForDirectoryFromBindings), core/profile-store.ts (directory-bindings.json),
 // core/factory.ts (getAccountCacheFileName) and packages/wrangler/src/user/commands.ts (whoami refuses --profile).
-
-const A = "0123456789abcdef0123456789abcdef";
-const B = "fedcba9876543210fedcba9876543210";
-
-const whoami = (accounts: { id: string; name: string }[]) =>
-  JSON.stringify({ loggedIn: true, authType: "OAuth Token", email: "dev@example.com", accounts });
-
-function fake() {
-  const calls: string[][] = [];
-  const exec: Exec = async (_bin, args) => {
-    calls.push(args);
-    return { code: 0, stdout: whoami([{ id: A, name: "Acme" }]), stderr: "" };
-  };
-  return { exec, calls };
-}
-
-function folder(files: Record<string, string> = {}) {
-  const root = tempDir("cloudpin-wrangler-");
-  for (const [name, content] of Object.entries(files)) {
-    mkdirSync(join(root, name, ".."), { recursive: true });
-    writeFileSync(join(root, name), content);
-  }
-  return root;
-}
-
-// An empty home folder, so no test reads the real Wrangler profiles.
-const noProfiles = tempDir("cloudpin-wrangler-home-");
-
-const resolve = (args: string[], cwd: string, env: NodeJS.ProcessEnv = {}, exec: Exec = fake().exec) =>
-  cloudflare.resolve({ args, env: { HOME: noProfiles, ...env }, cwd, bin: "wrangler" }, exec);
-
-/** A home folder whose Wrangler config (~/.wrangler) holds this directory-bindings.json. */
-function profileHome(bindings: Record<string, string> | string) {
-  const home = tempDir("cloudpin-wrangler-home-");
-  mkdirSync(join(home, ".wrangler", "profiles"), { recursive: true });
-  const text = typeof bindings === "string" ? bindings : JSON.stringify(bindings);
-  writeFileSync(join(home, ".wrangler", "profiles", "directory-bindings.json"), text);
-  return { HOME: home };
-}
-// Wrangler matches the folder as its process.cwd() spells it: the real path outside Windows.
-const physical = (dir: string) => (process.platform === "win32" ? dir : realpathSync(dir));
-const bound = (dir: string, profile: string) => ({ [physical(dir)]: profile });
-const cacheFile = (name: string, id: string) => ({
-  [`node_modules/.cache/wrangler/${name}`]: JSON.stringify({ account: { id, name: "Cached" } }),
-});
 
 describe("Wrangler auth profiles: which login a command uses", () => {
   it("asks whoami in the command's folder, so it reports that folder's profile", async () => {
