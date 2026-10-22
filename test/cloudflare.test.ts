@@ -156,6 +156,116 @@ describe("cloudflare.resolve: which account a command uses", () => {
   });
 });
 
+describe("cloudflare.resolve: the .env files Wrangler loads (#116)", () => {
+  // A fake whoami that records the environment it was given.
+  function recording(opts: { code?: number; stdout?: string; stderr?: string } = {}) {
+    const envs: NodeJS.ProcessEnv[] = [];
+    const exec: Exec = async (_bin, _args, env) => {
+      envs.push(env);
+      return { code: opts.code ?? 0, stdout: opts.stdout ?? whoami([{ id: A, name: "Acme" }]), stderr: opts.stderr ?? "" };
+    };
+    return { exec, envs };
+  }
+
+  it("takes CLOUDFLARE_ACCOUNT_ID from .env over the project's account cache, as Wrangler does", async () => {
+    const root = folder({
+      "wrangler.toml": 'name = "w"\n',
+      ".env": `CLOUDFLARE_ACCOUNT_ID=${B}\n`,
+      "node_modules/.cache/wrangler/wrangler-account.json": JSON.stringify({ account: { id: A, name: "Acme" } }),
+    });
+    const { exec, envs } = recording();
+    expect(await resolve(["deploy"], root, {}, exec)).toEqual({ kind: "identity", identity: { account: B }, source: "CLOUDFLARE_ACCOUNT_ID in .env" });
+    expect(envs).toEqual([]);
+  });
+
+  it("keeps the config file's account_id and the environment's own variable above .env", async () => {
+    const root = folder({ "wrangler.toml": `account_id = "${A}"\n`, ".env": `CLOUDFLARE_ACCOUNT_ID=${B}\n` });
+    expect(await resolve(["deploy"], root)).toMatchObject({ identity: { account: A }, source: "account_id in wrangler.toml" });
+    const bare = folder({ ".env": `CLOUDFLARE_ACCOUNT_ID=${B}\n` });
+    expect(await resolve(["deploy"], bare, { CLOUDFLARE_ACCOUNT_ID: A })).toMatchObject({ identity: { account: A }, source: "CLOUDFLARE_ACCOUNT_ID" });
+  });
+
+  it("uses CLOUDFLARE_ENV from .env to pick the config's [env.NAME] section, and --env to pick .env.NAME", async () => {
+    const toml = `account_id = "${A}"\n[env.production]\naccount_id = "${B}"\n`;
+    expect(await resolve(["deploy"], folder({ "wrangler.toml": toml, ".env": "CLOUDFLARE_ENV=production\n" }))).toMatchObject({ identity: { account: B } });
+    const root = folder({ ".env": `CLOUDFLARE_ACCOUNT_ID=${A}\n`, ".env.production": `CLOUDFLARE_ACCOUNT_ID=${B}\n` });
+    expect(await resolve(["deploy", "--env", "production"], root)).toMatchObject({ identity: { account: B }, source: "CLOUDFLARE_ACCOUNT_ID in .env.production" });
+    expect(await resolve(["deploy"], root)).toMatchObject({ identity: { account: A } });
+  });
+
+  it("reads .env in the --cwd folder; --config doesn't move it", async () => {
+    const root = folder({ ".env": `CLOUDFLARE_ACCOUNT_ID=${A}\n`, "app/.env": `CLOUDFLARE_ACCOUNT_ID=${B}\n`, "app/wrangler.toml": 'name = "w"\n' });
+    expect(await resolve(["deploy", "--cwd", "app"], root)).toMatchObject({ identity: { account: B } });
+    expect(await resolve(["deploy", "--config", join("app", "wrangler.toml")], root)).toMatchObject({ identity: { account: A } });
+  });
+
+  it("treats an empty CLOUDFLARE_ACCOUNT_ID as unset without falling back to CF_ACCOUNT_ID, as Wrangler does", async () => {
+    // workers-utils getEnvironmentVariableFactory reads the deprecated name only
+    // when the main one is absent from process.env; workers-auth then treats "" as unset.
+    const cache = { "node_modules/.cache/wrangler/wrangler-account.json": JSON.stringify({ account: { id: A, name: "Acme" } }) };
+    const fromFile = folder({ ...cache, ".env": `CLOUDFLARE_ACCOUNT_ID=\nCF_ACCOUNT_ID=${B}\n` });
+    expect(await resolve(["deploy"], fromFile)).toMatchObject({ identity: { account: A }, source: expect.stringMatching(/cache/) });
+    const fromShell = folder({ ...cache, ".env": "CLOUDFLARE_ACCOUNT_ID=\n" });
+    expect(await resolve(["deploy"], fromShell, { CF_ACCOUNT_ID: B })).toMatchObject({ identity: { account: A } });
+    expect(await resolve(["deploy"], folder(cache), { CLOUDFLARE_ACCOUNT_ID: "", CF_ACCOUNT_ID: B })).toMatchObject({ identity: { account: A } });
+  });
+
+  it("reads a relative WRANGLER_CACHE_DIR from the folder Wrangler runs in (after --cwd)", async () => {
+    const root = folder({ "app/.env": "WRANGLER_CACHE_DIR=cache\n", "app/cache/wrangler-account.json": JSON.stringify({ account: { id: B, name: "Side" } }) });
+    expect(await resolve(["deploy", "--cwd", "app"], root)).toMatchObject({ identity: { account: B, label: "Side" } });
+    expect(await resolve(["deploy"], join(root, "app"), { WRANGLER_CACHE_DIR: "cache" })).toMatchObject({ identity: { account: B } });
+  });
+
+  it("reads the account cache in a WRANGLER_CACHE_DIR set by .env", async () => {
+    const root = folder({ "cache/wrangler-account.json": JSON.stringify({ account: { id: B, name: "Side" } }) });
+    writeFileSync(join(root, ".env"), `WRANGLER_CACHE_DIR=${join(root, "cache")}\n`);
+    expect(await resolve(["deploy"], root)).toMatchObject({ identity: { account: B, label: "Side" } });
+  });
+
+  it("asks whoami with the token from .env, and names the file when it fails", async () => {
+    const root = folder({ ".env": "CLOUDFLARE_API_TOKEN=token-from-dotenv\n" });
+    const { exec, envs } = recording();
+    await resolve(["deploy"], root, { PATH: "/bin" }, exec);
+    expect(envs).toEqual([{ PATH: "/bin", CLOUDFLARE_API_TOKEN: "token-from-dotenv" }]);
+    const bad = recording({ code: 1, stdout: "", stderr: "Authentication error [code: 10000]" });
+    const res = await resolve(["deploy"], root, {}, bad.exec);
+    expect(res).toMatchObject({ kind: "error", message: expect.stringMatching(/CLOUDFLARE_API_TOKEN is set in \.env/) });
+    expect(JSON.stringify(res)).not.toContain("token-from-dotenv");
+  });
+
+  it("runs whoami in the command's --cwd folder, so Wrangler tops it up from that folder's .env", async () => {
+    const root = folder({ "app/package.json": "{}" });
+    const spaced = fake();
+    await resolve(["deploy", "--cwd", "app"], root, {}, spaced.exec);
+    expect(spaced.calls).toEqual([["whoami", "--json", "--cwd", join(root, "app")]]);
+    const joined = fake();
+    await resolve(["deploy", "--cwd=app"], root, {}, joined.exec);
+    expect(joined.calls).toEqual([["whoami", "--json", "--cwd", join(root, "app")]]);
+    const none = fake();
+    await resolve(["deploy"], root, {}, none.exec);
+    expect(none.calls).toEqual([["whoami", "--json"]]);
+  });
+
+  it("passes the command's own environment, the same object, when there is no .env file", async () => {
+    const env = { PATH: "/bin", CLOUDFLARE_API_TOKEN: "t" };
+    const { exec, envs } = recording();
+    await resolve(["deploy"], folder({ "wrangler.toml": 'name = "w"\n' }), env, exec);
+    expect(envs).toHaveLength(1);
+    expect(envs[0]).toBe(env);
+  });
+
+  it("stops when a .env file can't be read exactly, naming the file and variable but not the value", async () => {
+    const expand = await resolve(["deploy"], folder({ ".env": "CLOUDFLARE_ACCOUNT_ID=${OTHER_ACCOUNT}\n" }));
+    expect(expand).toMatchObject({ kind: "error", message: expect.stringMatching(/CLOUDFLARE_ACCOUNT_ID in \.env/) });
+    expect(JSON.stringify(expand)).not.toContain("OTHER_ACCOUNT");
+  });
+
+  it("is not stopped by .env lines for other tools that dotenv reads or skips", async () => {
+    const env = 'GOOGLE_CREDS="{\\"type\\":\\"service_account\\"}"\nDEBUG: true\nstray line\nDATABASE_URL=postgres://${HOST}/db\n';
+    expect(await resolve(["deploy"], folder({ "wrangler.toml": `account_id = "${A}"\n`, ".env": env }))).toMatchObject({ kind: "identity", identity: { account: A } });
+  });
+});
+
 describe("cloudflare.isExempt", () => {
   it.each([
     [["login"]], [["logout"]], [["whoami"]], [["auth", "list"]], [["--version"]], [["deploy", "--help"]], [["docs"]], [["types"]],

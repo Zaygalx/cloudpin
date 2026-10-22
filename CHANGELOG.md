@@ -60,6 +60,18 @@ All notable changes to cloudpin are listed here. The format follows
 - `cloudpin doctor` on Windows warns when PowerShell's execution policy would stop an installed agent hook, when
   PATH has `.` or another entry that is not a full path, and when Claude Code is older than 2.1.47, which ran hooks
   through cmd.exe (#108).
+- Wrangler: cloudpin now reads the `.env` files Wrangler loads into its own environment before every command
+  (`.env` and `.env.local`, plus `.env.<name>` and `.env.<name>.local` with `--env <name>`, or the `--env-file`
+  files, in the folder it runs in) (#116). A `CLOUDFLARE_ACCOUNT_ID` there chose the account while cloudpin checked
+  the one from Wrangler's account cache or `wrangler whoami`, so a command could run on the wrong account; a
+  `CLOUDFLARE_API_TOKEN` there replaced the login cloudpin checked. Both now count, as do `CLOUDFLARE_ENV` and the
+  other account and credential variables, with Wrangler's precedence: a non-empty variable already set wins, and
+  `account_id` in the Wrangler config still beats them all. cloudpin reads the files with the parser Wrangler uses
+  (dotenv's, BSD-2-Clause, copied with its notice). A value it can't work out (one that refers to another variable,
+  or a `.env.vault` that `DOTENV_KEY` would decrypt) stops the command, naming the file and variable, never the value.
+  Wrangler's account cache is now read from the one folder Wrangler reads it from (`WRANGLER_CACHE_DIR`, else
+  `node_modules/.cache/wrangler` if it exists, else `.wrangler/cache`); cloudpin went on to the next folder when that
+  one had no account, so an old account cached elsewhere could stand in for the one Wrangler would pick.
 
 ## [1.1.2] - 2026-10-19
 
