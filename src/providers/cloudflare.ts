@@ -259,7 +259,12 @@ export const cloudflare: ProviderDef<"cloudflare"> = {
           message: `cloudpin can't tell which account Wrangler profile "${p.name}" uses: \`wrangler whoami\` refuses --profile and reports this folder's login, ${here}; set account_id in the Wrangler config or CLOUDFLARE_ACCOUNT_ID, or run \`wrangler auth activate ${p.name}\` here`,
         };
       }
-      whoamiArgs.push("--cwd", lookup);
+      // The command's own folder flags, so whoami picks the profile from the same
+      // string: createHandler (register-yargs-command.ts) takes the folder from
+      // dirname(path.resolve(--config)) without resolving links, and --config is
+      // a global flag (index.ts globalFlags), so whoami accepts it.
+      whoamiArgs.push("--cwd", folder);
+      if (given !== undefined) whoamiArgs.push("--config", given);
     }
     // `wrangler whoami --json` exits non-zero when not authenticated (whoami.ts).
     const res = await exec("wrangler", whoamiArgs, env);
