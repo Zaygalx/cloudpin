@@ -192,6 +192,23 @@ describe("Wrangler auth profiles: cache and exemptions", () => {
     expect(calls).toBe(2);
   });
 
+  it("asks again after `wrangler auth activate` rebinds the folder", async () => {
+    const root = folder({ "app/.keep": "" });
+    const env = profileHome(bound(join(root, "app"), "work"));
+    let login = A;
+    let calls = 0;
+    const real: Exec = async () => {
+      calls++;
+      return { code: 0, stdout: whoami([{ id: login, name: "x" }]), stderr: "" };
+    };
+    const exec = cachedExec(real, cloudflare.cacheInputs(env), { cacheDir: join(root, "cache"), env: {} });
+    expect(await resolve(["deploy"], join(root, "app"), env, exec)).toMatchObject({ identity: { account: A } });
+    writeFileSync(join(env.HOME, ".wrangler", "profiles", "directory-bindings.json"), JSON.stringify(bound(join(root, "app"), "second")));
+    login = B;
+    expect(await resolve(["deploy"], join(root, "app"), env, exec)).toMatchObject({ identity: { account: B } });
+    expect(calls).toBe(2);
+  });
+
   it("watches the bindings file and every profile's credential files", () => {
     const { HOME } = profileHome({});
     const inputs = cloudflare.cacheInputs({ HOME });
