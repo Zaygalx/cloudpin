@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, sep } from "node:path";
-import { home } from "../paths.js";
 
 // Wrangler auth profiles (#103), checked against github.com/cloudflare/workers-sdk at wrangler@4.151.3
 // and developers.cloudflare.com/workers/wrangler/profiles/ (beta since wrangler 4.106.0):
@@ -39,10 +39,18 @@ const isDir = (path: string): boolean => {
   }
 };
 
+/**
+ * The home folder as Wrangler sees it: os.homedir(), which reads USERPROFILE on Windows and HOME elsewhere
+ * (Node docs, os.homedir), so a HOME set by MSYS or Cygwin on Windows does not count.
+ */
+function wranglerHome(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {
+  return (platform === "win32" ? env.USERPROFILE : env.HOME) || homedir();
+}
+
 /** XDG config folder as Wrangler computes it (packages/workers-utils/src/xdg-app-paths.ts xdgConfig). */
 function xdgConfig(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {
   if (env.XDG_CONFIG_HOME) return env.XDG_CONFIG_HOME;
-  const h = home(env);
+  const h = wranglerHome(env, platform);
   if (platform === "darwin") return join(h, "Library", "Preferences");
   if (platform === "win32") return join(env.APPDATA || join(h, "AppData", "Roaming"), "xdg.config");
   return join(h, ".config");
@@ -53,7 +61,7 @@ function xdgConfig(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {
  * (packages/workers-utils/src/global-wrangler-config-path.ts getGlobalConfigPath).
  */
 export function wranglerConfigDirs(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform) {
-  const legacy = join(home(env), ".wrangler");
+  const legacy = join(wranglerHome(env, platform), ".wrangler");
   const xdg = join(xdgConfig(env, platform), ".wrangler");
   return { active: isDir(legacy) ? legacy : xdg, all: [legacy, xdg] };
 }
@@ -181,7 +189,7 @@ export function envCredentials(env: NodeJS.ProcessEnv): boolean {
 }
 
 /** The files that decide which profile, and so which login, `wrangler whoami` uses. */
-export function profileCacheInputs(env: NodeJS.ProcessEnv) {
-  const dirs = wranglerConfigDirs(env).all;
+export function profileCacheInputs(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform) {
+  const dirs = wranglerConfigDirs(env, platform).all;
   return { files: dirs.map((d) => join(d, BINDINGS)), dirs: dirs.map((d) => join(d, "config")) };
 }

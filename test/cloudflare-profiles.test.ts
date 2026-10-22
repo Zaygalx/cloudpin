@@ -166,8 +166,9 @@ describe("Wrangler auth profiles: cache and exemptions", () => {
   });
 
   it("watches the bindings file and every profile's credential files", () => {
-    const { HOME } = profileHome({});
-    const inputs = cloudflare.cacheInputs({ HOME });
+    const env = profileHome({});
+    const { HOME } = env;
+    const inputs = cloudflare.cacheInputs(env);
     expect(inputs.files).toContain(join(HOME, ".wrangler", "profiles", "directory-bindings.json"));
     expect(inputs.dirs).toContain(join(HOME, ".wrangler", "config"));
     expect(inputs.env).toContain("WRANGLER_API_ENVIRONMENT");

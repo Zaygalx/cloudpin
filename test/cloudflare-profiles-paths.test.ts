@@ -1,7 +1,9 @@
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { describe, expect, it } from "vitest";
+import { commandProfile, profileCacheInputs, wranglerConfigDirs } from "../src/providers/wrangler-profiles.js";
 import type { Exec } from "../src/types.js";
+import { tempDir } from "./tmp.js";
 import { A, B, folder, profileHome, resolve, whoami } from "./wrangler-fixtures.js";
 
 // How Wrangler spells the folder whose binding picks the profile (#103), from workers-sdk wrangler@4.151.3:
@@ -68,5 +70,30 @@ describe.skipIf(process.platform === "win32")("Wrangler profiles through a symli
       identity: { account: B },
       source: expect.stringMatching(/profile "work"/),
     });
+  });
+});
+
+// Wrangler finds its config folder from os.homedir() (packages/workers-utils/src/global-wrangler-config-path.ts,
+// xdg-app-paths.ts), which reads USERPROFILE on Windows and HOME elsewhere (Node docs, os.homedir).
+describe("Wrangler's config folder follows os.homedir()", () => {
+  const homes = () => {
+    const user = tempDir("cloudpin-wrangler-user-");
+    const msys = tempDir("cloudpin-wrangler-msys-");
+    return { user, msys, env: { HOME: msys, USERPROFILE: user } };
+  };
+
+  it("on Windows reads USERPROFILE, not a HOME set by MSYS or Cygwin", () => {
+    const { user, msys, env } = homes();
+    expect(wranglerConfigDirs(env, "win32").all).toEqual([join(user, ".wrangler"), join(user, "AppData", "Roaming", "xdg.config", ".wrangler")]);
+    expect(profileCacheInputs(env, "win32").files).toContain(join(user, ".wrangler", "profiles", "directory-bindings.json"));
+    expect(wranglerConfigDirs(env, "linux").all[0]).toBe(join(msys, ".wrangler"));
+  });
+
+  it("on Windows applies a binding stored under USERPROFILE", () => {
+    const { user, env } = homes();
+    const dir = folder();
+    mkdirSync(join(user, ".wrangler", "profiles"), { recursive: true });
+    writeFileSync(join(user, ".wrangler", "profiles", "directory-bindings.json"), JSON.stringify({ [dir]: "work" }));
+    expect(commandProfile(["deploy"], env, dir, "win32")).toMatchObject({ name: "work" });
   });
 });

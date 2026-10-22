@@ -33,7 +33,7 @@ export function folder(files: Record<string, string> = {}) {
 export const noProfiles = tempDir("cloudpin-wrangler-home-");
 
 export const resolve = (args: string[], cwd: string, env: NodeJS.ProcessEnv = {}, exec: Exec = fake().exec) =>
-  cloudflare.resolve({ args, env: { HOME: noProfiles, ...env }, cwd, bin: "wrangler" }, exec);
+  cloudflare.resolve({ args, env: { HOME: noProfiles, USERPROFILE: noProfiles, ...env }, cwd, bin: "wrangler" }, exec);
 
 /** A home folder whose Wrangler config (~/.wrangler) holds this directory-bindings.json. */
 export function profileHome(bindings: Record<string, string> | string) {
@@ -41,7 +41,7 @@ export function profileHome(bindings: Record<string, string> | string) {
   mkdirSync(join(home, ".wrangler", "profiles"), { recursive: true });
   const text = typeof bindings === "string" ? bindings : JSON.stringify(bindings);
   writeFileSync(join(home, ".wrangler", "profiles", "directory-bindings.json"), text);
-  return { HOME: home };
+  return { HOME: home, USERPROFILE: home };
 }
 // Wrangler matches the folder as its process.cwd() spells it: the real path outside Windows.
 export const physical = (dir: string) => (process.platform === "win32" ? dir : realpathSync(dir));
