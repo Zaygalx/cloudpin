@@ -83,6 +83,22 @@ describe("Wrangler auth profiles: which login a command uses", () => {
     writeFileSync(join(xdg, ".wrangler", "profiles", "directory-bindings.json"), JSON.stringify(bound(root, "xdg")));
     expect(await resolve(["deploy"], root, { XDG_CONFIG_HOME: xdg })).toMatchObject({ identity: { account: B } });
   });
+
+  it("ignores the XDG bindings once ~/.wrangler exists, as Wrangler does", async () => {
+    const root = folder({ ...cacheFile("wrangler-account.json", A), ...cacheFile("wrangler-account-xdg.json", B) });
+    const xdg = tempDir("cloudpin-wrangler-xdg-");
+    mkdirSync(join(xdg, ".wrangler", "profiles"), { recursive: true });
+    writeFileSync(join(xdg, ".wrangler", "profiles", "directory-bindings.json"), JSON.stringify(bound(root, "xdg")));
+    const home = tempDir("cloudpin-wrangler-home-");
+    mkdirSync(join(home, ".wrangler"));
+    expect(await resolve(["deploy"], root, { HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: xdg })).toMatchObject({ identity: { account: A } });
+  });
+
+  it("tells a logged-out named profile to log in with `wrangler auth create`", async () => {
+    const root = folder();
+    const out: Exec = async () => ({ code: 1, stdout: JSON.stringify({ loggedIn: false }), stderr: "" });
+    expect(await resolve(["deploy"], root, profileHome(bound(root, "work")), out)).toEqual({ kind: "logged-out", hint: "wrangler auth create work" });
+  });
 });
 
 describe("Wrangler auth profiles: when cloudpin can't tell, it stops", () => {
@@ -106,6 +122,18 @@ describe("Wrangler auth profiles: when cloudpin can't tell, it stops", () => {
     expect(await resolve(["deploy", "--profile", "side"], root, { ...env, CF_API_KEY: "k", CF_EMAIL: "e" })).toMatchObject({ identity: { account: A } });
     // A key without its email is not used (credentials.ts getAuthFromEnv), so the profile's login would be.
     expect(await resolve(["deploy", "--profile", "side"], root, { ...env, CLOUDFLARE_API_KEY: "k" })).toMatchObject({ kind: "error" });
+  });
+
+  it("reads a CF_* alias only when the main variable is absent, even if empty", async () => {
+    const root = folder();
+    const env = { ...profileHome(bound(root, "work")), CLOUDFLARE_API_TOKEN: "", CF_API_TOKEN: "t" };
+    expect(await resolve(["deploy", "--profile", "side"], root, env)).toMatchObject({ kind: "error" });
+  });
+
+  it("ignores a --profile after --, which belongs to another program", async () => {
+    const root = folder();
+    const res = await resolve(["deploy", "--", "--profile", "side"], root, profileHome(bound(root, "work")));
+    expect(res).toMatchObject({ kind: "identity", source: expect.stringMatching(/profile "work", bound to/) });
   });
 
   it("stops when it can't read the bindings, or the profile is invalid or given twice", async () => {
