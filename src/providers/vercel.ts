@@ -70,6 +70,30 @@ const readJson = (path: string): Record<string, unknown> | undefined => {
 };
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v !== "";
 
+/**
+ * The `scope` of the local config Vercel reads at startup (vercel/vercel packages/cli/src/
+ * util/get-config.ts, called in src/index.ts before `--cwd` changes folder): the `-A` file,
+ * resolved against the folder the command runs in, else vercel.json there, else now.json
+ * (read up to vercel 50; later versions refuse it and exit). A file Vercel would fail on, or
+ * that cloudpin cannot read, is an error: the command's team can't be told.
+ */
+function localScope(cwd: string, file: string | undefined): string | undefined | { error: string } {
+  const paths = file !== undefined ? [resolvePath(cwd, file)] : [join(cwd, "vercel.json"), join(cwd, "now.json")];
+  const found: unknown[] = [];
+  for (const path of paths) {
+    if (file === undefined && !existsSync(path)) continue;
+    try {
+      found.push(JSON.parse(readFileSync(path, "utf8")));
+    } catch {
+      return { error: `could not read ${path} as JSON, so the scope Vercel would use is unknown` };
+    }
+  }
+  const config = found[0];
+  return config && typeof config === "object" && nonEmpty((config as { scope?: unknown }).scope)
+    ? (config as { scope: string }).scope
+    : undefined;
+}
+
 interface RepoProject {
   id?: unknown;
   name?: unknown;
@@ -194,6 +218,12 @@ export const vercel: ProviderDef<"vercel"> = {
       return { kind: "logged-out", hint: "vercel login" };
     }
 
+    // Vercel's order (packages/cli/src/index.ts): --scope || --team || the local config's
+    // scope; arg keeps the last occurrence of each flag.
+    const local = localScope(cwd, flagValue(args, ["--local-config", "-A"]));
+    if (typeof local === "object") return { kind: "error", message: local.error };
+    const explicit = flagValue(args, ["--scope", "-S"]) || flagValue(args, ["--team", "-T"]) || local;
+
     const common = ["--non-interactive"];
     if (token) common.push("--token", token);
     if (globalConfig) common.push("--global-config", globalConfig);
@@ -206,8 +236,7 @@ export const vercel: ProviderDef<"vercel"> = {
 
     // The team account-level requests use.
     let team: string;
-    const explicit = flagValue(args, ["--team", "-T", "--scope", "-S"]);
-    if (explicit !== undefined) {
+    if (explicit) {
       team = toId(explicit);
     } else {
       const current = teams.find((t) => t.current);

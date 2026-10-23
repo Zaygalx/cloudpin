@@ -37,6 +37,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   messages hide a token after `-dt` or joined to `-t`, never repeating it.
 - **Vercel short flag groups** ([#125](https://github.com/paureis/cloudpin/issues/125)): `vercel -dT team` and
   `-dt token` are checked against the account they pick, not the active one.
+- **Vercel scope** ([#127](https://github.com/paureis/cloudpin/issues/127)): `--scope` beats `--team`, and a
+  `scope` in `vercel.json` or the `-A` file counts, so cloudpin checks the team Vercel will use.
 
 ## 1.3.0: Fix it, see it (release 2026-12-03)
 
