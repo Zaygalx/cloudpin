@@ -77,6 +77,9 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 - A Vercel token after a short flag group (`vercel -dt VALUE deploy`), or typed joined to `-t` (`-t=VALUE`,
   `-tVALUE`), was printed in full in the block and confirmation messages, in the terminal or the agent's transcript
   (#123). They now show `***` there, as they already did for `-t VALUE` and `--token=VALUE`.
+- Vercel: a short flag group such as `vercel -dT other-team deploy` (`-d` is `--debug`) picks the team, the token
+  (`-dt`) or the config folder (`-dQ`) the way Vercel reads it, so cloudpin checks that account instead of the active
+  one (#125). A group's value also no longer passes for the command: `vercel -dT whoami deploy` isn't exempt.
 
 ## [1.1.2] - 2026-10-19
 

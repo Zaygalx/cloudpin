@@ -19,6 +19,25 @@ const GLOBAL_VALUE_FLAGS = new Set([
   "--cwd", "--global-config", "-Q", "--local-config", "-A", "--scope", "-S", "--team", "-T", "--token", "-t",
 ]);
 
+/**
+ * The arguments as Vercel's parser sees them, so a short group's flags and value are read
+ * (#125). Vercel parses with arg 5.0.0 (vercel/vercel packages/cli/package.json;
+ * github.com/vercel/arg index.js, tag 5.0.0), which splits a single-dash word longer than two
+ * characters into one flag per letter (`-dT` is `-d -T`); a last letter that takes a value
+ * reads the next word, and a value letter anywhere else is an error. A value never starts
+ * with "-", so splitting every such word before "--" is exact.
+ */
+function splitShortGroups(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--") return [...out, ...args.slice(i)];
+    if (arg.length > 2 && arg[0] === "-" && arg[1] !== "-") out.push(...arg.slice(1).split("").map((c) => `-${c}`));
+    else out.push(arg);
+  }
+  return out;
+}
+
 interface Team {
   id: string;
   slug: string;
@@ -157,13 +176,14 @@ export const vercel: ProviderDef<"vercel"> = {
 
   isExempt(args) {
     if (hasAnyFlag(args, ["--version", "-v", "--help", "-h"])) return true;
-    const [first, second] = commandWords(args, GLOBAL_VALUE_FLAGS);
+    const [first, second] = commandWords(splitShortGroups(args), GLOBAL_VALUE_FLAGS);
     if (first === undefined) return false;
     if (EXEMPT_COMMANDS.has(first)) return true;
     return first === "teams" && second !== undefined && EXEMPT_TEAMS_SUBCOMMANDS.has(second);
   },
 
-  async resolve({ args, env, cwd }, exec) {
+  async resolve({ args: typed, env, cwd }, exec) {
+    const args = splitShortGroups(typed);
     const token = flagValue(args, ["--token", "-t"]);
     const globalConfig = flagValue(args, ["--global-config", "-Q"]);
 

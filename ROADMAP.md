@@ -35,6 +35,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   project's `.env` sets for Wrangler count, and the account cache is read only from the folder Wrangler reads.
 - **Vercel tokens stay hidden** ([#123](https://github.com/paureis/cloudpin/issues/123)): block and confirmation
   messages hide a token after `-dt` or joined to `-t`, never repeating it.
+- **Vercel short flag groups** ([#125](https://github.com/paureis/cloudpin/issues/125)): `vercel -dT team` and
+  `-dt token` are checked against the account they pick, not the active one.
 
 ## 1.3.0: Fix it, see it (release 2026-12-03)
 
