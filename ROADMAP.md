@@ -33,6 +33,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   runs a command on the wrong account, for the release announcement.
 - **Wrangler's `.env` files** ([#116](https://github.com/paureis/cloudpin/issues/116)): the account and login a
   project's `.env` sets for Wrangler count, and the account cache is read only from the folder Wrangler reads.
+- **Vercel tokens stay hidden** ([#123](https://github.com/paureis/cloudpin/issues/123)): block and confirmation
+  messages hide a token after `-dt` or joined to `-t`, never repeating it.
 
 ## 1.3.0: Fix it, see it (release 2026-12-03)
 

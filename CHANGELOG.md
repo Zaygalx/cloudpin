@@ -72,6 +72,9 @@ All notable changes to cloudpin are listed here. The format follows
   Wrangler's account cache is now read from the one folder Wrangler reads it from (`WRANGLER_CACHE_DIR`, else
   `node_modules/.cache/wrangler` if it exists, else `.wrangler/cache`); cloudpin went on to the next folder when that
   one had no account, so an old account cached elsewhere could stand in for the one Wrangler would pick.
+- A Vercel token after a short flag group (`vercel -dt VALUE deploy`), or typed joined to `-t` (`-t=VALUE`,
+  `-tVALUE`), was printed in full in the block and confirmation messages, in the terminal or the agent's transcript
+  (#123). They now show `***` there, as they already did for `-t VALUE` and `--token=VALUE`.
 
 ## [1.1.2] - 2026-10-19
 

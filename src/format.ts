@@ -9,11 +9,20 @@ const SECRET_SHORT: Record<string, string[]> = { vercel: ["-t"], vc: ["-t"] };
 
 function displayCommand(argv: string[]): string {
   const bin = argv[0]?.replace(/\\/g, "/").split("/").pop()?.toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, "") ?? "";
-  const secret = [...SECRET_FLAGS, ...(SECRET_SHORT[bin] ?? [])];
+  const short = SECRET_SHORT[bin] ?? [];
+  const secret = [...SECRET_FLAGS, ...short];
+  // Vercel's parser (arg 5.0.0) splits a short group such as -dt into -d -t and
+  // gives the next word to its last letter (github.com/vercel/arg, index.js).
+  const endsGroup = (w: string) =>
+    /^-[^-=][^=]+$/.test(w) && short.some((f) => w.endsWith(f.slice(1)));
   const shown = argv.map((a, i) => {
-    if (i > 0 && secret.includes(argv[i - 1]!)) return "***";
+    if (i > 0 && (secret.includes(argv[i - 1]!) || endsGroup(argv[i - 1]!))) return "***";
     const inline = SECRET_FLAGS.find((f) => a.startsWith(`${f}=`));
-    return inline ? `${inline}=***` : a;
+    if (inline) return `${inline}=***`;
+    // A short flag can carry its value joined: -t=VALUE or -tVALUE (#123).
+    const joined = i > 0 ? short.find((f) => a.startsWith(f) && a.length > f.length) : undefined;
+    if (joined) return a[joined.length] === "=" ? `${joined}=***` : `${joined}***`;
+    return a;
   });
   return shown.map((a) => (/[\s"]/.test(a) ? JSON.stringify(a) : a)).join(" ");
 }
