@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { commandWords, flagValue, hasAnyFlag } from "../args.js";
 import { home } from "../paths.js";
 import type { ProviderDef, Resolution } from "../types.js";
-import { wranglerDotenv } from "./wrangler-dotenv.js";
+import { envFileArgs, wranglerDotenv } from "./wrangler-dotenv.js";
 
 // Sources: github.com/cloudflare/workers-sdk (packages/workers-auth/src/core/factory.ts
 // getActiveAccountId and getOrSelectAccountId; packages/workers-utils/src/config/
@@ -257,6 +257,13 @@ export const cloudflare: ProviderDef<"cloudflare"> = {
     // the flag), whoami gets it too and reads the same folder. Without --cwd the
     // call is unchanged. Draft PR #117 extends this for auth profiles.
     const whoamiArgs = flagValue(args, ["--cwd"]) === undefined ? ["whoami", "--json"] : ["whoami", "--json", "--cwd", start];
+    // With --env-file, Wrangler reads only those files and not the default .env
+    // ones, for every command whoami included: workers-sdk wrangler@4.151.3,
+    // packages/wrangler/src/index.ts lines 626-632 (a global flag) and 702-710
+    // (a check run for every command, after the --cwd chdir), with no variable
+    // that turns it off. A default .env must not lend whoami a token the command
+    // won't have (#130), so whoami gets the same files, made absolute.
+    for (const file of envFileArgs(args) ?? []) whoamiArgs.push("--env-file", resolvePath(start, file));
     const res = await exec("wrangler", whoamiArgs, env);
     let who: { loggedIn?: unknown; accounts?: { id?: unknown; name?: unknown }[] } | undefined;
     try {

@@ -39,6 +39,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   `-dt token` are checked against the account they pick, not the active one.
 - **Vercel scope** ([#127](https://github.com/paureis/cloudpin/issues/127)): `--scope` beats `--team`, and a
   `scope` in `vercel.json` or the `-A` file counts, so cloudpin checks the team Vercel will use.
+- **Wrangler `--env-file` and whoami** ([#130](https://github.com/paureis/cloudpin/issues/130)): the account check
+  reads the same `--env-file` files as the command, not the folder's default `.env`.
 
 ## 1.3.0: Fix it, see it (release 2026-12-03)
 

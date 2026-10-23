@@ -117,7 +117,7 @@ export function parseDotenv(text: string): Map<string, string> {
  * undefined. yargs-parser 21 arrays are greedy: each word after the flag, up to
  * the next one starting with "-", is another file, also after --env-file=X.
  */
-function envFileArgs(args: string[]): string[] | undefined {
+export function envFileArgs(args: string[]): string[] | undefined {
   let files: string[] | undefined;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;

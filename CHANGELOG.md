@@ -59,6 +59,8 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 - `cloudpin mcp` answered `initialize` for an unknown protocol version with 2026-07-28, a revision that has no
   `initialize`. It now answers with 2025-11-25, the newest revision that has one, and no longer lists 2026-07-28
   (#111).
+- Wrangler with `--env-file`: cloudpin's `wrangler whoami` now reads the same files, so a token in the folder's
+  default `.env` can no longer make it vouch for an account the command won't use (#130).
 - `cloudpin doctor` on Windows warns when PowerShell's execution policy would stop an installed agent hook, when
   PATH has `.` or another entry that is not a full path, and when Claude Code is older than 2.1.47, which ran hooks
   through cmd.exe (#108).
