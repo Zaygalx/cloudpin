@@ -109,6 +109,7 @@ describe("cloudflare.resolve: which account a command uses", () => {
   it("honours --config and --cwd", async () => {
     const root = folder({ "wrangler.toml": `account_id = "${A}"\n`, "other/w.toml": `account_id = "${B}"\n`, "other/wrangler.toml": `account_id = "${B}"\n` });
     expect(await resolve(["deploy", "-c", join("other", "w.toml")], root)).toMatchObject({ identity: { account: B } });
+    expect(await resolve(["deploy", `-c=${join("other", "w.toml")}`], root)).toMatchObject({ identity: { account: B } });
     expect(await resolve(["deploy", "--cwd", "other"], root)).toMatchObject({ identity: { account: B } });
   });
 

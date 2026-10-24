@@ -1,9 +1,21 @@
 /**
  * Reads a flag's value from an argument list, supporting `--flag value`,
- * `--flag=value`, `-f value` and `-f=value`. The last occurrence wins, matching
- * how most CLIs parse repeated flags.
+ * `--flag=value`, `-f value` and, when `shortEquals` is on, `-f=value`. The
+ * last occurrence wins, matching how most CLIs parse repeated flags.
+ *
+ * `shortEquals` is off by default because not every CLI accepts a short flag
+ * joined with `=`: Vercel's argument parser rejects `-T=acme` instead of
+ * reading it as a team. Only turn it on for a CLI whose parser does accept it.
  */
-export function flagValue(args: string[], names: string[]): string | undefined {
+export interface FlagValueOptions {
+  shortEquals?: boolean;
+}
+
+export function flagValue(
+  args: string[],
+  names: string[],
+  options: FlagValueOptions = {},
+): string | undefined {
   let found: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -11,7 +23,7 @@ export function flagValue(args: string[], names: string[]): string | undefined {
     for (const name of names) {
       if (arg === name && i + 1 < args.length) {
         found = args[i + 1];
-      } else if (arg.startsWith(`${name}=`)) {
+      } else if (arg.startsWith(`${name}=`) && (name.startsWith("--") || options.shortEquals)) {
         found = arg.slice(name.length + 1);
       }
     }

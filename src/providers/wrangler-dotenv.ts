@@ -170,7 +170,7 @@ export function wranglerDotenv(
 ): WranglerEnv | { error: string } {
   const fold = (name: string) => (platform === "win32" ? name.toUpperCase() : name);
   const canonical = new Map(DOTENV_VARS.map((n) => [fold(n), n]));
-  const names = envFileArgs(args) ?? defaultEnvFiles(flagValue(args, ["--env", "-e"]));
+  const names = envFileArgs(args) ?? defaultEnvFiles(flagValue(args, ["--env", "-e"], { shortEquals: true }));
 
   // The merged file values, later files winning, keyed by canonical name.
   const merged = new Map<string, { value: string; file: string }>();

@@ -125,6 +125,7 @@ describe("wranglerDotenv: the environment Wrangler gives itself", () => {
       from: { CLOUDFLARE_ACCOUNT_ID: ".env.production.local", CLOUDFLARE_EMAIL: ".env.production" },
     });
     expect(load(root, {}, ["deploy", "-e", "production"])).toMatchObject({ env: { CLOUDFLARE_ACCOUNT_ID: C } });
+    expect(load(root, {}, ["deploy", "-e=production"])).toMatchObject({ env: { CLOUDFLARE_ACCOUNT_ID: C } });
     expect(load(root, {}, ["deploy", "--env=production"])).toMatchObject({ env: { CLOUDFLARE_ACCOUNT_ID: C } });
     // CLOUDFLARE_ENV picks the config section, not the .env files (only --env does).
     expect(load(root, { CLOUDFLARE_ENV: "production" })).toMatchObject({ env: { CLOUDFLARE_ACCOUNT_ID: A } });
