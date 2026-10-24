@@ -31,6 +31,18 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   the official MCP Registry as `io.github.paureis/cloudpin`.
 - **A 90-second demo** ([#113](https://github.com/paureis/cloudpin/issues/113)): an agent in Cursor stopped before it
   runs a command on the wrong account, for the release announcement.
+- **Wrangler's `.env` files** ([#116](https://github.com/paureis/cloudpin/issues/116)): the account and login a
+  project's `.env` sets for Wrangler count, and the account cache is read only from the folder Wrangler reads.
+- **Vercel tokens stay hidden** ([#123](https://github.com/paureis/cloudpin/issues/123)): block and confirmation
+  messages hide a token after `-dt` or joined to `-t`, never repeating it.
+- **Vercel short flag groups** ([#125](https://github.com/paureis/cloudpin/issues/125)): `vercel -dT team` and
+  `-dt token` are checked against the account they pick, not the active one.
+- **Vercel scope** ([#127](https://github.com/paureis/cloudpin/issues/127)): `--scope` beats `--team`, and a
+  `scope` in `vercel.json` or the `-A` file counts, so cloudpin checks the team Vercel will use.
+- **Wrangler `--env-file` and whoami** ([#130](https://github.com/paureis/cloudpin/issues/130)): the account check
+  reads the same `--env-file` files as the command, not the folder's default `.env`.
+- **kubectl and helm short flag groups** ([#133](https://github.com/paureis/cloudpin/issues/133)): `-itn other-ns`
+  and `-is <server>` are checked against what they pick, and target variables set by `$(...)` stop the command.
 
 ## 1.3.0: Fix it, see it (release 2026-12-03)
 
@@ -51,6 +63,10 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   switch`, nothing run), and `cloudpin doctor`'s report, so an agent can say why the hook isn't guarding.
 - **Write-up** ([#114](https://github.com/paureis/cloudpin/issues/114)): why AI agents need an account guardrail, and
   how cloudpin does it, with numbers from the test suite.
+- **Short flags joined with `=`** ([#118](https://github.com/paureis/cloudpin/issues/118)): read `-e=production`
+  the way each CLI does, in every provider.
+- **Cloudflare account variables** ([#119](https://github.com/paureis/cloudpin/issues/119)): block an account
+  variable whose value cloudpin can't know, and read lowercase names on Windows.
 
 ## Ideas (not scheduled yet)
 

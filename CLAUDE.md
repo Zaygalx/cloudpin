@@ -17,6 +17,7 @@ owner's explicit yes.
 | Typecheck | `npm run typecheck` |
 | Build to `dist/` | `npm run build` |
 | Real-account smoke test | `npm run build` then `node scripts/smoke.mjs [provider...]` |
+| Cursor demo folder (#113; storyboard in its README) | `npm run build` then `node scripts/demo-folder.mjs --dir <neutral path>` |
 
 Run typecheck and tests as separate calls, and read each exit code; a pipe (`| grep`) hides it.
 

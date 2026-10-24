@@ -101,7 +101,9 @@ export const supabase: ProviderDef<"supabase"> = {
     // `supabase login` there shows up after the cache's five minutes.
     const dir = env.SUPABASE_HOME ?? join(home(env), ".supabase");
     return {
-      env: [TOKEN_VAR, "SUPABASE_PROFILE", "SUPABASE_HOME", "SUPABASE_NO_KEYRING"],
+      // SUPABASE_PROJECT_ID and SUPABASE_WORKDIR pick the project, not the login; they are
+      // listed so guard stops a command that sets them from an unknown value (#86, #133).
+      env: [TOKEN_VAR, "SUPABASE_PROFILE", "SUPABASE_HOME", "SUPABASE_NO_KEYRING", "SUPABASE_PROJECT_ID", "SUPABASE_WORKDIR"],
       files: [join(dir, "access-token"), join(dir, "profile")],
       dirs: [],
     };

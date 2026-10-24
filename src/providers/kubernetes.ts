@@ -46,6 +46,73 @@ function flag(args: string[], long: string[], short?: string): string | undefine
   return found || undefined;
 }
 
+/*
+ * Short flag groups (#133). kubectl and helm parse flags with spf13/pflag (flag.go,
+ * parseShortArg and parseSingleShortArg): a single-dash word is read one letter at a time. A
+ * letter that takes no value is one flag; the first letter that takes a value takes the rest
+ * of the word (`-itnprod`), or `=value` (`-in=prod`), or the next word when it is the last
+ * letter (`-itn prod`). An unknown letter is an error (observed: `kubectl config view -xn foo`
+ * says "unknown shorthand flag: 'x' in -xn"), so only letters the command defines matter.
+ *
+ * The letters below are every one-letter flag of the commands cloudpin guards: kubectl 1.36,
+ * `kubectl <command> --help` for each command and `kubectl options`; helm v3.22.1 and v4.3.1
+ * source (cmd/helm and pkg/cmd). Neither CLI has a one-letter form of --context, --cluster,
+ * --kubeconfig, --user, --kube-context or --kube-apiserver. A letter not listed here (a newer
+ * CLI) before one that picks the target means cloudpin can't tell, and stops the command.
+ */
+function shortLetters(bin: string | undefined, command: string | undefined) {
+  if (bin === "helm") {
+    // Target: -n (global --namespace) and -A (list --all-namespaces).
+    return { targets: "nA", bool: "Aadgiqr", value: "flmno" };
+  }
+  // -f and -p take a value (--filename, --patch, proxy --port) except in `kubectl logs`
+  // (--follow, --previous); -w is --watch except in `kubectl proxy` (--www).
+  const logs = command === "logs";
+  const proxy = command === "proxy";
+  return {
+    targets: "nsA",
+    bool: `ARiqt${logs ? "fp" : ""}${proxy ? "" : "w"}`,
+    value: `LPceklnorsuv${logs ? "" : "fp"}${proxy ? "w" : ""}`,
+  };
+}
+
+/**
+ * The arguments with each short flag group split as pflag reads it, so `-itn prod` becomes
+ * `-i -t -n prod` and `flag` and `allNamespaces` see its namespace. A group whose letters
+ * cloudpin doesn't all know, when a letter after the unknown one could pick the target, is
+ * returned as a reason instead. Only the letter is named: a word may hold a value.
+ */
+function splitShortGroups(args: string[], bin: string | undefined): string[] | { error: string } {
+  const { targets, bool, value } = shortLetters(bin, commandWords(args)[0]);
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--") return [...out, ...args.slice(i)];
+    if (arg.length <= 2 || arg[0] !== "-" || arg[1] === "-") {
+      out.push(arg);
+      continue;
+    }
+    for (let j = 1; j < arg.length; j++) {
+      const letter = arg[j]!;
+      const rest = arg.slice(j + 1);
+      if (bool.includes(letter) && !rest.startsWith("=")) {
+        out.push(`-${letter}`);
+        continue;
+      }
+      if (!bool.includes(letter) && !value.includes(letter) && [...rest].some((l) => targets.includes(l))) {
+        return {
+          error: `cloudpin doesn't know ${bin ?? "kubectl"}'s flag -${letter}, so it can't tell whether the letters after it in the same word pick the namespace or server`,
+        };
+      }
+      // A value letter (or a boolean given `=value`) takes the rest of the word.
+      out.push(`-${letter}${rest}`);
+      if (rest === "" && value.includes(letter) && i + 1 < args.length) out.push(args[++i]!);
+      break;
+    }
+  }
+  return out;
+}
+
 interface Kubeconfig {
   currentContext?: string;
   contexts: Map<string, { cluster?: string; namespace?: string }>;
@@ -175,8 +242,15 @@ function kubercProblem(args: string[], env: NodeJS.ProcessEnv): string | undefin
 function allNamespaces(args: string[]): boolean {
   const end = args.indexOf("--");
   const own = end === -1 ? args : args.slice(0, end);
-  return own.some((a) => a === "-A" || a === "--all-namespaces" || a === "--all-namespaces=true");
+  // pflag reads a boolean's `=value` with Go's strconv.ParseBool; anything but a false
+  // spelling is on (or an error, and the command doesn't run).
+  return own.some((a) => {
+    const [name, value] = a.split(/=(.*)/s, 2);
+    return (name === "-A" || name === "--all-namespaces") && (value === undefined || !FALSE.has(value));
+  });
 }
+
+const FALSE = new Set(["0", "f", "F", "false", "FALSE", "False"]);
 
 /** Drops `user:password@` from a server URL, so it never reaches a message or `status`. */
 function withoutUserinfo(server: string): string {
@@ -200,7 +274,16 @@ export const kubernetes: ProviderDef<"kubernetes"> = {
 
   cacheInputs() {
     // Identity is read from the kubeconfig on every command; nothing is spawned or cached.
-    return { env: [], files: [], dirs: [] };
+    // The list still names every variable `resolve` reads, so guard stops a command that
+    // sets one from a value only known when it runs (#86, #133).
+    return {
+      env: [
+        "KUBECONFIG", "KUBERC", "KUBECTL_KUBERC", "HOME", "USERPROFILE",
+        "HELM_KUBECONTEXT", "HELM_KUBEAPISERVER", "HELM_NAMESPACE",
+      ],
+      files: [],
+      dirs: [],
+    };
   },
 
   isExempt(args, bin) {
@@ -215,6 +298,9 @@ export const kubernetes: ProviderDef<"kubernetes"> = {
       const problem = kubercProblem(args, env);
       if (problem) return { kind: "error", message: problem };
     }
+    const split = splitShortGroups(args, bin);
+    if (!Array.isArray(split)) return { kind: "error", message: split.error };
+    args = split;
     const sel = selectors(bin, args, env);
     const loaded = loadKubeconfig(sel.kubeconfig, env);
     if ("error" in loaded) return loaded.error;
