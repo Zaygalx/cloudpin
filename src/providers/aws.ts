@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { commandWords, flagValue, hasAnyFlag } from "../args.js";
+import { commandWords, flagValue, hasBareFlag } from "../args.js";
 import { home } from "../paths.js";
 import type { ProviderDef } from "../types.js";
 
@@ -30,7 +30,9 @@ export const aws: ProviderDef<"aws"> = {
   },
 
   isExempt(args) {
-    if (hasAnyFlag(args, ["--version"])) return true;
+    // The main parser's --version is an argparse "version" action, which prints and exits
+    // wherever it comes before "--" (aws/aws-cli awscli/argparser.py MainArgParser).
+    if (hasBareFlag(args, ["--version"])) return true;
     const words = commandWords(args, GLOBAL_VALUE_FLAGS);
     const [first, second] = words;
     if (first === undefined) return false;

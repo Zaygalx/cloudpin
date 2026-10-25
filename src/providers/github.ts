@@ -1,10 +1,26 @@
 import { join } from "node:path";
-import { flagValue, hasAnyFlag, leadingWords } from "../args.js";
+import { flagValue, hasBareFlag, leadingWords } from "../args.js";
 import { appData, home } from "../paths.js";
 import type { ProviderDef } from "../types.js";
 
 const DEFAULT_HOST = "github.com";
 const EXEMPT_COMMANDS = new Set(["auth", "version", "help", "completion"]);
+// Built-in commands and their aliases (`gh help reference` and each `--help`, gh 2.88), where
+// cobra prints the help instead of running the command. Left out: `copilot`, and any other word
+// (an extension or an alias), which gets --help as an argument (DisableFlagParsing in cli/cli
+// pkg/cmd/copilot, pkg/cmd/root/extension.go and alias.go).
+const HELP_COMMANDS = new Set([
+  "agent-task", "agent-tasks", "agent", "agents", "alias", "api", "attestation", "at", "browse", "cache",
+  "codespace", "cs", "config", "extension", "extensions", "ext", "gist", "gpg-key", "issue", "label",
+  "licenses", "org", "pr", "preview", "project", "release", "repo", "ruleset", "rs", "run", "search",
+  "secret", "ssh-key", "status", "variable", "workflow",
+]);
+// Groups whose subcommand decides: `extension exec` also passes --help on (DisableFlagParsing in
+// pkg/cmd/extension/command.go), and cobra gives -h to a command's own flag when it has one:
+// --homepage in `repo create`/`repo new`/`repo edit`, --host in `config get/list/set`.
+const SUBCOMMAND_GROUPS = new Set(["extension", "extensions", "ext", "repo", "config"]);
+const NOT_HELP = new Set(["exec"]);
+const H_NOT_HELP = new Set(["repo create", "repo new", "repo edit", "config get", "config list", "config set"]);
 // gh exits 4 when a command needs authentication (`gh help exit-codes`).
 const EXIT_AUTH_REQUIRED = 4;
 const TOKEN_VARS = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"];
@@ -26,9 +42,21 @@ export const github: ProviderDef<"github"> = {
   },
 
   isExempt(args) {
-    if (hasAnyFlag(args, ["--version", "--help", "-h"])) return true;
-    const [first] = leadingWords(args);
-    return first !== undefined && EXEMPT_COMMANDS.has(first);
+    const [first, second] = leadingWords(args);
+    // --version is a flag of the root command only (#146). With a flag before the first word,
+    // cobra still finds the command after it, so only flags alone are read here.
+    if (first === undefined) {
+      return args.every((a) => a.startsWith("-")) && hasBareFlag(args, ["--version", "--help", "-h"]);
+    }
+    if (EXEMPT_COMMANDS.has(first)) return true;
+    if (!HELP_COMMANDS.has(first)) return false;
+    if (SUBCOMMAND_GROUPS.has(first)) {
+      // A word after a flag may still be the subcommand; with none, it's the group's own help.
+      if (second === undefined && args.slice(1).some((a) => !a.startsWith("-"))) return false;
+      if (second !== undefined && NOT_HELP.has(second)) return false;
+    }
+    if (hasBareFlag(args, ["--help"])) return true;
+    return hasBareFlag(args, ["-h"]) && !H_NOT_HELP.has(`${first} ${second}`);
   },
 
   async resolve({ args, env }, exec) {

@@ -48,6 +48,19 @@ export function commandWords(args: string[], valueFlags: ReadonlySet<string>): s
   return words;
 }
 
+/**
+ * Whether one of `names` is a word of its own before "--". Use it where a flag grants an
+ * exemption (help, version, --dry-run): every CLI reads the words after "--" as operands, and
+ * cobra and yargs read `--help=false` as "no help" (#146).
+ */
+export function hasBareFlag(args: string[], names: string[]): boolean {
+  for (const arg of args) {
+    if (arg === "--") return false;
+    if (names.includes(arg)) return true;
+  }
+  return false;
+}
+
 export function hasAnyFlag(args: string[], names: string[]): boolean {
   return args.some((a) => names.includes(a) || names.some((n) => a.startsWith(`${n}=`)));
 }

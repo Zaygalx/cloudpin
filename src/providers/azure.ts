@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { commandWords, flagValue, hasAnyFlag } from "../args.js";
+import { commandWords, flagValue, hasBareFlag } from "../args.js";
 import { home } from "../paths.js";
 import type { ProviderDef } from "../types.js";
 
@@ -27,7 +27,10 @@ export const azure: ProviderDef<"azure"> = {
   },
 
   isExempt(args) {
-    if (hasAnyFlag(args, ["--version", "--help", "-h"])) return true;
+    // knack shows the version only when --version or -v is the first word (knack cli.py
+    // _should_show_version); `keyvault secret set-attributes --version` is the secret's (#146).
+    if (args[0] === "--version" || args[0] === "-v") return true;
+    if (hasBareFlag(args, ["--help", "-h"])) return true;
     const [first, second] = commandWords(args, GLOBAL_VALUE_FLAGS);
     if (first === undefined) return false;
     if (EXEMPT_COMMANDS.has(first)) return true;
