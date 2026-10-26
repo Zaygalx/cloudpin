@@ -1,7 +1,8 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { commandName } from "../src/guard.js";
-import { envFor, findInvocations, UNKNOWN_VALUE } from "../src/shellwords.js";
+import { findInvocations, UNKNOWN_VALUE } from "../src/shellwords.js";
+import { envFor } from "../src/user-env.js";
 
 const GUARDED = ["az", "aws", "gcloud", "vercel", "gh"];
 const find = (cmd: string) => findInvocations(cmd, GUARDED);

@@ -1,7 +1,8 @@
 import { resolve } from "node:path";
 import { formatBlock, formatConfirm } from "../format.js";
 import { commandName, guard, type GuardDeps } from "../guard.js";
-import { envFor, findInvocations } from "../shellwords.js";
+import { findInvocations } from "../shellwords.js";
+import { envFor } from "../user-env.js";
 
 /** How one agent hands a shell command to its hook and reads the answer. */
 export interface AgentHook {

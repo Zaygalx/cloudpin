@@ -2,7 +2,8 @@ import type { ActiveEnvironment } from "./config.js";
 import { commandName, guard, type GuardDeps, type Trace, type Verdict } from "./guard.js";
 import { AGENTS, type AgentName } from "./hooks/agents.js";
 import { home } from "./paths.js";
-import { envFor, findInvocations, type Invocation } from "./shellwords.js";
+import { findInvocations, type Invocation } from "./shellwords.js";
+import { envFor } from "./user-env.js";
 import { describe } from "./status.js";
 import type { Identity } from "./types.js";
 
