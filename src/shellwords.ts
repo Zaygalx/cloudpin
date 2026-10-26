@@ -26,12 +26,12 @@ export { UNKNOWN_VALUE };
 type Token =
   /**
    * `quoted`: some of it was in quotes, so `"vercel"` is a string, not a command.
-   * `dynamic`: it contains `$(...)`, backticks or a `$NAME` expansion, so its value is only known when it runs.
+   * `dynamic`: it contains `$(...)`, `<(...)`, backticks or a `$NAME` expansion, so its value is only known when it runs.
    */
   | { kind: "word"; value: string; quoted: boolean; dynamic: boolean }
   /** A control operator: ; & | newline, or ( and ) which open and close a subshell. */
   | { kind: "op"; op: string }
-  /** $( ... ) or backticks: a command line run in a subshell. */
+  /** $( ... ), <( ... ), >( ... ) or backticks: a command line run in a subshell. */
   | { kind: "subst"; inner: string }
   /** A heredoc or here-string: text the command reads on its standard input. */
   | { kind: "stdin"; body: string };
@@ -63,7 +63,7 @@ function tokenize(input: string): Token[] {
   // `$NAME` or `${NAME}` (not `$` alone or `$1`): an expansion outside single quotes.
   const expands = (at: number) => /[A-Za-z_{]/.test(input[at + 1] ?? "");
 
-  // Reads $( ... ) starting after "$(", honouring nesting and quotes.
+  // Reads $( ... ), <( ... ) or >( ... ) starting after the "(", honouring nesting and quotes.
   const readParen = (start: number): number => {
     let depth = 1;
     let i = start;
@@ -165,7 +165,8 @@ function tokenize(input: string): Token[] {
         inWord = true;
       }
       i += 2;
-    } else if (c === "$" && input[i + 1] === "(") {
+    } else if ("$<>".includes(c) && input[i + 1] === "(") {
+      // $(...), or a process substitution <(...) >(...): one argument, joined with any text around it (#156).
       inWord = true;
       dynamic = true;
       i = readParen(i + 2);

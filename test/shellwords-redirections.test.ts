@@ -118,9 +118,10 @@ describe("findInvocations: redirections are not arguments and do not end the com
       ["az", ["group", "list"]],
       ["gh", ["pr", "list"]],
     ]);
+    // As a redirection target it runs where it appears, before the command it belongs to, like $( ) (#156).
     expect(calls("gh pr list > >(az group list)")).toEqual([
-      ["gh", ["pr", "list"]],
       ["az", ["group", "list"]],
+      ["gh", ["pr", "list"]],
     ]);
   });
 
