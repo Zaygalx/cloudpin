@@ -20,8 +20,10 @@ Examples of what counts as a security problem here:
   environment as your command, and reads the result. For Kubernetes, Supabase and Wrangler it also reads project
   files that name the target (the kubeconfig, `supabase/.temp/`, the Wrangler config and its account cache).
 - It never logs in, logs out or switches accounts, and never uses or stores a token or key. Credential files are not
-  read, with one exception: the kubeconfig, which can hold credentials next to the cluster list; cloudpin takes only
-  the server and namespace from it. For Vercel it checks whether a login file exists, without reading it.
+  read, with two exceptions: the kubeconfig, which can hold credentials next to the cluster list (cloudpin takes only
+  the server and namespace from it), and the project's `.env` files that Wrangler loads, which can hold
+  `CLOUDFLARE_API_TOKEN` (cloudpin reads the account variables from them, and keys its cache on a salted hash of the
+  credential variables; it never prints, logs or stores their values). For Vercel it checks whether a login file exists, without reading it.
 - It stores successful identity answers for up to five minutes in a cache file in your user cache folder. Keys are
   salted hashes, so tokens and command arguments are never written in clear.
 - `cloudpin mcp`, the MCP server for agents, is read-only: its two tools report status and what cloudpin would decide

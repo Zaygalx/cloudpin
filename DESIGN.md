@@ -28,7 +28,7 @@ We found no popular standalone tool for per-project cloud account pinning.
 | Terminal | Shell wrappers for bash, zsh and PowerShell, enabled by one line in the shell profile; plus `cloudpin check` for scripts and CI |
 | Speed | Identity results cached; cache invalidated when the CLI's own config/credential file changes |
 | Agents | Every agent with a real blocking pre-command hook (Claude Code, Cursor; Codex, Gemini CLI and Copilot CLI **(verify)**; Antigravity, Gemini CLI's successor, added for 1.0 in #80), via `cloudpin install-hook <agent>`. Agents without a blocking hook get documented `cloudpin check` integration, never a fake hook |
-| Block rule | On mismatch, block every command except login, logout, switch, whoami, `--version` and help |
+| Block rule | On mismatch, block every command except login, logout, switch, whoami, `--version` and help (only where the CLI really stops on them, #146) |
 | Override | `CLOUDPIN_SKIP=1` works in the terminal; ignored in agent-hook mode |
 | Scope | The full product at launch; iterate on issues afterwards |
 | License | MIT |

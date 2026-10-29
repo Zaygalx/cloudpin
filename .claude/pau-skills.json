@@ -1,0 +1,7 @@
+{
+  "file-size-guard": {
+    "pathLimits": {
+      "README.md": 6500
+    }
+  }
+}

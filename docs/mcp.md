@@ -11,7 +11,7 @@
 Neither tool runs, switches or changes anything, by design: an agent that could switch accounts could switch to the
 wrong one, and only you know which account the work is for.
 
-When an agent connects, the server also hands it a few lines of instructions (1.2.0, out 2026-11-05): check first, and
+When an agent connects, the server also hands it a few lines of instructions: check first, and
 on a block stop and tell you the reason and the fix, never work around it.
 
 ## Add it to your agent

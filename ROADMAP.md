@@ -14,36 +14,6 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
 - Anything that misses its release moves to the next one, with the reason in its issue.
 - Once new features slow down, cloudpin moves to maintenance: a release when there is something worth releasing.
 
-## 1.2.0: Run it everywhere (release 2026-11-05)
-
-- **GitHub Action** ([#10](https://github.com/paureis/cloudpin/issues/10)): `cloudpin check` before deploy jobs.
-- **Homebrew** ([#16](https://github.com/paureis/cloudpin/issues/16)): `brew install paureis/tap/cloudpin`, from
-  [paureis/homebrew-tap](https://github.com/paureis/homebrew-tap).
-- **Scoop** ([#17](https://github.com/paureis/cloudpin/issues/17)): a bucket, paureis/scoop-bucket, on a Windows
-  zip attached to each release.
-- **Upgrade advice for pnpm and Volta** ([#98](https://github.com/paureis/cloudpin/issues/98)): name the right
-  upgrade command when cloudpin was installed globally with pnpm or Volta.
-- **Agent hooks under PowerShell's execution policy** ([#108](https://github.com/paureis/cloudpin/issues/108)):
-  Codex and Copilot CLI hooks on Windows start cloudpin through cmd.exe, so `Restricted` and `AllSigned` can't stop
-  them, and `cloudpin doctor` warns about what could still stop or bypass a hook there.
-- **MCP everywhere** ([#111](https://github.com/paureis/cloudpin/issues/111)): the MCP server tells every agent how
-  to use it, setup snippets for Codex, Cursor, VS Code, Gemini CLI, Windsurf and Claude Desktop, and a listing in
-  the official MCP Registry as `io.github.paureis/cloudpin`.
-- **A 90-second demo** ([#113](https://github.com/paureis/cloudpin/issues/113)): an agent in Cursor stopped before it
-  runs a command on the wrong account, for the release announcement.
-- **Wrangler's `.env` files** ([#116](https://github.com/paureis/cloudpin/issues/116)): the account and login a
-  project's `.env` sets for Wrangler count, and the account cache is read only from the folder Wrangler reads.
-- **Vercel tokens stay hidden** ([#123](https://github.com/paureis/cloudpin/issues/123)): block and confirmation
-  messages hide a token after `-dt` or joined to `-t`, never repeating it.
-- **Vercel short flag groups** ([#125](https://github.com/paureis/cloudpin/issues/125)): `vercel -dT team` and
-  `-dt token` are checked against the account they pick, not the active one.
-- **Vercel scope** ([#127](https://github.com/paureis/cloudpin/issues/127)): `--scope` beats `--team`, and a
-  `scope` in `vercel.json` or the `-A` file counts, so cloudpin checks the team Vercel will use.
-- **Wrangler `--env-file` and whoami** ([#130](https://github.com/paureis/cloudpin/issues/130)): the account check
-  reads the same `--env-file` files as the command, not the folder's default `.env`.
-- **kubectl and helm short flag groups** ([#133](https://github.com/paureis/cloudpin/issues/133)): `-itn other-ns`
-  and `-is <server>` are checked against what they pick, and target variables set by `$(...)` stop the command.
-
 ## 1.3.0: Fix it, see it (release 2026-12-03)
 
 - **`cloudpin switch`** ([#14](https://github.com/paureis/cloudpin/issues/14)): move every CLI to the pinned
@@ -86,6 +56,18 @@ An idea gets a version when work on it starts.
 
 ## Shipped
 
+- **1.2.0** (2026-10-29): run it everywhere. The GitHub Action ([#10](https://github.com/paureis/cloudpin/issues/10)),
+  Homebrew and Scoop ([#16](https://github.com/paureis/cloudpin/issues/16),
+  [#17](https://github.com/paureis/cloudpin/issues/17)), upgrade advice per package manager
+  ([#98](https://github.com/paureis/cloudpin/issues/98)), Windows agent hooks under PowerShell's execution policy
+  ([#108](https://github.com/paureis/cloudpin/issues/108)), the MCP server for every agent and the MCP Registry
+  ([#111](https://github.com/paureis/cloudpin/issues/111)), a 90-second demo
+  ([#113](https://github.com/paureis/cloudpin/issues/113)), and Vercel, Wrangler and kubectl/helm account fixes
+  ([#116](https://github.com/paureis/cloudpin/issues/116), [#123](https://github.com/paureis/cloudpin/issues/123),
+  [#125](https://github.com/paureis/cloudpin/issues/125), [#127](https://github.com/paureis/cloudpin/issues/127),
+  [#130](https://github.com/paureis/cloudpin/issues/130), [#133](https://github.com/paureis/cloudpin/issues/133),
+  [#146](https://github.com/paureis/cloudpin/issues/146), [#154](https://github.com/paureis/cloudpin/issues/154),
+  [#156](https://github.com/paureis/cloudpin/issues/156)).
 - **1.1.2** (2026-10-19): completes the Windows security fix: nothing cloudpin starts looks in the current folder,
   including the `node` that npm-installed CLIs run (GHSA-3cf7-5v5w-q5vr).
 - **1.1.1** (2026-10-18): security fix for Windows: CLIs run by their full path from PATH, never from the
