@@ -2,7 +2,7 @@ import type { ActiveEnvironment } from "./config.js";
 import { commandName, guard, type GuardDeps, type Trace, type Verdict } from "./guard.js";
 import { AGENTS, type AgentName } from "./hooks/agents.js";
 import { home } from "./paths.js";
-import { findInvocations, type Invocation } from "./shellwords.js";
+import { type Dialect, findInvocations, type Invocation } from "./shellwords.js";
 import { envFor } from "./user-env.js";
 import { describe } from "./status.js";
 import type { Identity } from "./types.js";
@@ -34,6 +34,8 @@ export interface ExplainOptions {
   mode: "shell" | "agent";
   cwd: string;
   env: NodeJS.ProcessEnv;
+  /** The shell a full line is read as (#159); bash by default. */
+  shell?: Dialect;
 }
 
 const AGENT_LABELS: Record<AgentName, string> = {
@@ -97,7 +99,7 @@ export async function explain(command: string | string[], opts: ExplainOptions, 
   const bins = [...deps.providers.flatMap((p) => p.bins), "cloudpin"];
   const calls: Invocation[] =
     typeof command === "string"
-      ? findInvocations(command, bins, opts.cwd, opts.env)
+      ? findInvocations(command, bins, opts.cwd, opts.env, opts.shell)
       : command.length > 0
         ? [{ bin: command[0]!, args: command.slice(1), env: {} }]
         : [];

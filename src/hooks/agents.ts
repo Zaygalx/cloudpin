@@ -1,13 +1,21 @@
 import { resolve } from "node:path";
 import { formatBlock, formatConfirm } from "../format.js";
 import { commandName, guard, type GuardDeps } from "../guard.js";
-import { findInvocations } from "../shellwords.js";
+import { type Dialect, findInvocations, type Invocation } from "../shellwords.js";
 import { envFor } from "../user-env.js";
+
+/** A shell command an agent is about to run. */
+export interface AgentCall {
+  command: string;
+  cwd: string;
+  /** The shell that runs it, when the payload says (#159); otherwise it depends on the platform. */
+  shell?: Dialect;
+}
 
 /** How one agent hands a shell command to its hook and reads the answer. */
 export interface AgentHook {
   /** Extracts the shell command and its folder, or null if the call is not a shell command. */
-  parse(input: unknown): { command: string; cwd: string } | null;
+  parse(input: unknown): AgentCall | null;
   /** Output that blocks the command with `reason`. */
   deny(reason: string): string;
   /**
@@ -25,7 +33,8 @@ const str = (v: unknown): string | undefined => (typeof v === "string" ? v : und
 
 // Claude Code (code.claude.com/docs/en/hooks) and Codex (learn.chatgpt.com/docs/hooks)
 // share the PreToolUse protocol: tool_input.command in, hookSpecificOutput out.
-function preToolUse(tools: string[], canAsk: boolean): AgentHook {
+// `shells` maps a tool name to the shell that runs it, when the name says (#159).
+function preToolUse(shells: Record<string, Dialect | undefined>, canAsk: boolean): AgentHook {
   const decide = (permissionDecision: "deny" | "ask", reason: string) =>
     JSON.stringify({
       hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason: reason },
@@ -34,8 +43,10 @@ function preToolUse(tools: string[], canAsk: boolean): AgentHook {
     parse(input) {
       const i = obj(input);
       const command = str(obj(i.tool_input).command);
-      if (!tools.includes(str(i.tool_name) ?? "") || command === undefined) return null;
-      return { command, cwd: str(i.cwd) ?? process.cwd() };
+      const tool = str(i.tool_name) ?? "";
+      if (!Object.hasOwn(shells, tool) || command === undefined) return null;
+      const shell = shells[tool];
+      return { command, cwd: str(i.cwd) ?? process.cwd(), ...(shell ? { shell } : {}) };
     },
     deny: (reason) => decide("deny", reason),
     ...(canAsk ? { ask: (reason: string) => decide("ask", reason) } : {}),
@@ -46,18 +57,25 @@ function preToolUse(tools: string[], canAsk: boolean): AgentHook {
 }
 
 export const AGENTS = {
-  // Claude Code: "ask" prompts the user, showing the reason.
-  claude: preToolUse(["Bash", "PowerShell"], true),
+  // Claude Code: "ask" prompts the user, showing the reason. Its Bash tool runs
+  // bash (Git Bash on Windows); its PowerShell tool, PowerShell
+  // (code.claude.com/docs/en/hooks, "PowerShell").
+  claude: preToolUse({ Bash: "bash", PowerShell: "powershell" }, true),
   // Codex parses "ask" but does not support it yet, and an unsupported answer
   // lets the tool call continue (learn.chatgpt.com/docs/hooks), so it denies.
-  codex: preToolUse(["Bash", "PowerShell"], false),
+  // It names every shell call "Bash" (codex-rs exec_command.rs, HookToolName::bash)
+  // and runs it in the user's shell, PowerShell by default on Windows
+  // (codex-rs shell_detect.rs, default_user_shell_from_path), so the name says nothing.
+  codex: preToolUse({ Bash: undefined, PowerShell: "powershell" }, false),
 
   // GitHub Copilot CLI (docs.github.com, hooks configuration): toolArgs is a
   // JSON-encoded string in the documented example; empty output = default.
+  // Its tools are "bash" (Unix) and "powershell" (Windows).
   copilot: {
     parse(input) {
       const i = obj(input);
-      if (!["bash", "powershell"].includes(str(i.toolName) ?? "")) return null;
+      const shell = str(i.toolName);
+      if (shell !== "bash" && shell !== "powershell") return null;
       let args: unknown = i.toolArgs;
       if (typeof args === "string") {
         try {
@@ -67,7 +85,7 @@ export const AGENTS = {
         }
       }
       const command = str(obj(args).command);
-      return command === undefined ? null : { command, cwd: str(i.cwd) ?? process.cwd() };
+      return command === undefined ? null : { command, cwd: str(i.cwd) ?? process.cwd(), shell };
     },
     deny: (reason) => JSON.stringify({ permissionDecision: "deny", permissionDecisionReason: reason }),
     // permissionDecision accepts "allow", "deny" and "ask"; the cloud agent,
@@ -174,6 +192,7 @@ export async function runHook(
   deps: GuardDeps,
   env: NodeJS.ProcessEnv,
   deadlineMs = HOOK_DEADLINE_MS,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<string> {
   // An agent runs the command when its hook fails or times out (Claude Code
   // and Codex treat a non-zero exit other than 2 as non-blocking), so every
@@ -192,7 +211,7 @@ export async function runHook(
     );
   });
   try {
-    return await Promise.race([checkCommand(agent, stdin, deps, env), deadline]);
+    return await Promise.race([checkCommand(agent, stdin, deps, env, platform), deadline]);
   } catch (err) {
     const reason = (err as Error)?.message?.split("\n")[0]?.slice(0, 200) ?? String(err);
     return agent.deny(
@@ -204,6 +223,19 @@ export async function runHook(
   }
 }
 
+/**
+ * The guarded calls in an agent's command, read with the rules of the shell that runs it (#159). When the
+ * payload doesn't name the shell, Windows may run it in PowerShell or in bash, so it is read both ways and
+ * every call either reading finds is checked; elsewhere it is bash.
+ */
+function agentCalls(call: AgentCall, bins: string[], env: NodeJS.ProcessEnv, platform: NodeJS.Platform): Invocation[] {
+  const shells: Dialect[] = call.shell ? [call.shell] : platform === "win32" ? ["bash", "powershell"] : ["bash"];
+  const seen = new Set<string>();
+  return shells
+    .flatMap((shell) => findInvocations(call.command, bins, call.cwd, env, shell))
+    .filter((inv) => !seen.has(JSON.stringify(inv)) && seen.add(JSON.stringify(inv)));
+}
+
 // Below the 60-second timeout `install-hook` writes for every agent, so cloudpin
 // answers before the agent gives up on it.
 const HOOK_DEADLINE_MS = 45_000;
@@ -213,8 +245,9 @@ async function checkCommand(
   stdin: string,
   deps: GuardDeps,
   env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
 ): Promise<string> {
-  let call: { command: string; cwd: string } | null;
+  let call: AgentCall | null;
   try {
     call = agent.parse(JSON.parse(stdin));
   } catch {
@@ -225,7 +258,7 @@ async function checkCommand(
   const bins = [...deps.providers.flatMap((p) => p.bins), "cloudpin"];
   const blocks: string[] = [];
   const confirmations: Confirmation[] = [];
-  for (let inv of findInvocations(call.command, bins, call.cwd, env)) {
+  for (let inv of agentCalls(call, bins, env, platform)) {
     if (commandName(inv.bin) === "cloudpin") {
       // A bare `cloudpin use` only shows the current environment.
       if (inv.args[0] === "use" && inv.args.length > 1) confirmations.push(useConfirmation(inv.args));

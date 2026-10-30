@@ -7,6 +7,8 @@ export interface Variables {
   known(name: string): string | undefined;
   /** True when NAME, unknown, is still sure to be one word that is not a flag (from the environment given). */
   oneWord(name: string): boolean;
+  /** PowerShell never splits a known value, quoted or not (#159). */
+  keepWhole?: boolean;
 }
 
 const IFS = /[ \t\n]+/;
@@ -49,7 +51,7 @@ export function expandWord(value: string, expansions: readonly Expansion[], quot
       if (prefix === undefined) prefix = text;
       real = true;
       if (e.spread && !(e.name !== undefined && vars.oneWord(e.name))) spread = true;
-    } else if (!e.spread) {
+    } else if (!e.spread || vars.keepWhole) {
       append(known);
       real = true;
     } else {

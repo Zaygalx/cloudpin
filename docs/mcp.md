@@ -6,7 +6,7 @@
 | Tool | Answers |
 |---|---|
 | `cloudpin_status` | which account each CLI is using here, what the project pins, which environment applies, which hooks are installed (the same as `cloudpin status --json`) |
-| `cloudpin_check` | would cloudpin allow this command line, as an agent's: each call, the account it would use and why, and the verdict with its reason and fix (the same as `cloudpin explain --agent --json`) |
+| `cloudpin_check` | would cloudpin allow this command line, as an agent's: each call, the account it would use and why, and the verdict with its reason and fix (the same as `cloudpin explain --agent --json`). The line is read as bash; pass `shell: "powershell"` for a PowerShell command (`--powershell` for `explain`) |
 
 Neither tool runs, switches or changes anything, by design: an agent that could switch accounts could switch to the
 wrong one, and only you know which account the work is for.

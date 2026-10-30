@@ -48,9 +48,10 @@ Usage:
                               (--only azure,aws: just these, each must be installed and logged in;
                               --json: the result as JSON, for CI)
   cloudpin status [--json]    Show each CLI's active account, the pins here, and installed hooks
-  cloudpin explain [--json] [--agent] -- <cmd...>
+  cloudpin explain [--json] [--agent] [--powershell] -- <cmd...>
                               What cloudpin would decide for a command, and why, without running it
-                              (one quoted argument is read as a full shell line; --agent: as an agent hook)
+                              (one quoted argument is read as a full shell line, bash unless --powershell;
+                              --agent: as an agent hook)
   cloudpin mcp                Read-only MCP server for agents (stdio): cloudpin_status, cloudpin_check
   cloudpin doctor [--json]    Check the whole setup (PATH, shell, hooks, pins, CLIs) and say what to fix
                               (--json is safe to paste in a bug report)
@@ -178,14 +179,14 @@ function writable(dir: string): boolean {
 }
 
 /**
- * `explain [--json] [--agent] [--] <cmd...>`: one argument is a full shell line,
+ * `explain [--json] [--agent] [--powershell] [--] <cmd...>`: one argument is a full shell line,
  * several are one command's argv. Read-only; exit 0 whatever the verdict.
  */
 async function explainCommand(argv: string[]): Promise<number> {
-  // Only leading --json / --agent are cloudpin's; everything after is the command's.
+  // Only leading --json / --agent / --powershell are cloudpin's; everything after is the command's.
   const flags = new Set<string>();
   let i = 0;
-  while (argv[i] === "--json" || argv[i] === "--agent") flags.add(argv[i++]!);
+  while (argv[i] === "--json" || argv[i] === "--agent" || argv[i] === "--powershell") flags.add(argv[i++]!);
   if (argv[i] === "--") i++;
   const words = argv.slice(i);
   if (words.length === 0) {
@@ -194,7 +195,8 @@ async function explainCommand(argv: string[]): Promise<number> {
   }
   const command = words.length === 1 ? words[0]! : words;
   const mode = flags.has("--agent") ? "agent" : "shell";
-  const calls = await explain(command, { mode, cwd: process.cwd(), env: process.env }, deps);
+  const shell = flags.has("--powershell") ? "powershell" : "bash";
+  const calls = await explain(command, { mode, cwd: process.cwd(), env: process.env, shell }, deps);
   if (flags.has("--json")) console.log(JSON.stringify({ mode, calls }, null, 2));
   else for (const line of formatExplain(calls, process.env)) console.log(line);
   return 0;

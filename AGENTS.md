@@ -38,6 +38,8 @@ Run the type-check and the tests as separate commands and read each exit code.
 | `plugin/`, `.claude-plugin/marketplace.json` | The Claude Code plugin (hook, MCP server, skill) and its marketplace |
 | `src/shellwords.ts` | Finds CLI calls inside a full shell command line |
 | `src/shell-tokens.ts` | The tokenizer behind it: words, operators, `$( )` and heredocs, read as bash reads them |
+| `src/ps-tokens.ts` | The same tokens from a PowerShell line, read as PowerShell reads it, and the arguments Windows PowerShell 5.1 hands a CLI |
+| `src/ps-words.ts` | PowerShell variables, assignments and keywords, for `shellwords.ts` |
 | `src/redirections.ts` | Shell redirections (`2>&1`, `>out`, `*>`), which shellwords drops from a call's arguments |
 | `src/hooks/agents.ts` | One adapter per AI agent's hook format |
 | `src/cache.ts` | The identity cache |

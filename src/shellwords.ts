@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { commandName } from "./guard.js";
+import { tokenizePowerShell, windowsPowerShellArgv } from "./ps-tokens.js";
+import { psAssignment, psVariables } from "./ps-words.js";
 import { type Expansion, tokenize } from "./shell-tokens.js";
 import { DYNAMIC_WORD, DYNAMIC_WORDS, UNKNOWN_VALUE } from "./types.js";
 import { expandWord, isDynamic, substitute, type Variables } from "./word-expansion.js";
@@ -23,6 +25,9 @@ export interface Invocation {
 }
 
 export { UNKNOWN_VALUE };
+
+/** The shell that reads the line: bash (also sh, zsh, Git Bash) or PowerShell (5.1 or 7) (#159). */
+export type Dialect = "bash" | "powershell";
 
 const ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s;
 // Words that run the command after them (shell keywords, prefixes, runners).
@@ -66,10 +71,13 @@ interface State {
   guarded: Set<string>;
   /** The environment the line starts in, when given: only to tell that an unknown variable is one word (#160). */
   env?: NodeJS.ProcessEnv;
+  dialect: Dialect;
+  /** PowerShell variables set from something other than one literal, which may be several words (#159). */
+  lists: Set<string>;
 }
 
 /** The variables the line set, as word expansion reads them (#160). */
-const variables = (state: State): Variables => ({
+const variables = (state: State): Variables => (state.dialect === "powershell" ? psVariables(state) : {
   known(name) {
     if (state.unset.has(name)) return "";
     const value = state.vars[name];
@@ -89,6 +97,7 @@ const child = (state: State): State => ({
   exported: { ...state.exported },
   plain: { ...state.plain },
   unset: new Set(state.unset),
+  lists: new Set(state.lists),
 });
 
 // PowerShell assignment: `$name = <value>` or `$name=<value>`.
@@ -122,6 +131,24 @@ function analyse(
   // An assignment word's value with the variables the line set; UNKNOWN_VALUE when a part isn't known.
   const valueOf = (k: number, set: RegExpExecArray): string =>
     dynamic[k] ? (substitute(words[k]!, expansions[k] ?? [], vars)?.slice(set[1]!.length + 1) ?? UNKNOWN_VALUE) : set[2]!;
+  if (state.dialect === "powershell") {
+    // & and . run the command after them (about_Operators), return and throw the pipeline after them.
+    if (!quoted[0] && ["&", ".", "return", "throw"].includes(words[0]?.toLowerCase() ?? "")) {
+      [words, quoted, dynamic, expansions] = [words.slice(1), quoted.slice(1), dynamic.slice(1), expansions.slice(1)];
+    } else {
+      const set = psAssignment([words, quoted, dynamic, expansions]);
+      if (set) {
+        // `$x = vercel ls` runs vercel; a single literal is the value, a "..." with $( ) one unknown word.
+        const [w, q, d, x] = set.value;
+        if (!set.literal && w.length > 0) analyse(w, stdin, out, state, q, d, x);
+        state.vars[`$${set.name}`] = !set.literal ? UNKNOWN_VALUE : d[0] ? (substitute(w[0]!, x[0] ?? [], vars) ?? UNKNOWN_VALUE) : w[0]!;
+        state.lists[set.literal ? "delete" : "add"](set.name);
+        return;
+      }
+      // An expression is not a command (`$cli x` is a parse error); its ( ) and $( ) parts were read already.
+      if (!PS_ENV.test(words[0] ?? "") && dynamic[0]) return;
+    }
+  }
   const psEnv = PS_ENV.exec(words[0] ?? "");
   if (psEnv && (psEnv[2] !== undefined || words[1] === "=")) {
     // A single literal (`'other'`, `other`) is known; anything else (an expression,
@@ -135,7 +162,7 @@ function analyse(
     assign(state, psEnv[1]!, known ? value : UNKNOWN_VALUE, true);
     return;
   }
-  const ps = PS_ASSIGNMENT.exec(words[0] ?? "");
+  const ps = state.dialect === "bash" ? PS_ASSIGNMENT.exec(words[0] ?? "") : null;
   if (ps && (ps[2] !== undefined || words[1] === "=")) {
     // `$x = "vercel"` stores a string; `$x = vercel ls` runs vercel and stores its output.
     const inline = ps[2] !== undefined && ps[2] !== "";
@@ -206,6 +233,9 @@ function analyse(
     name = commandName(bin);
     if (state.guarded.has(name)) {
       out.push(invocation(bin, expanded.slice(1), env, state));
+      // Windows PowerShell 5.1 passes quotes inside an argument unescaped, and the CLI splits it again (#159).
+      const legacy = state.dialect === "powershell" ? windowsPowerShellArgv(expanded.slice(1)) : [];
+      if (state.dialect === "powershell" && JSON.stringify(legacy) !== JSON.stringify(expanded.slice(1))) out.push(invocation(bin, legacy, env, state));
       return;
     }
     // eval, shells, find and script blocks get the words as typed, which the code they run expands;
@@ -266,12 +296,14 @@ function analyse(
       SHELLS.has(name) ? /^-[a-z]*c$/.test(a) : /^-(c|command)$/i.test(a),
     );
     const script = flag === -1 ? undefined : args[flag + 1];
+    // The script is read with the rules of the shell that runs it (#159).
+    const inner = (): State => ({ ...child(state), dialect: POWERSHELLS.has(name) ? "powershell" : "bash" });
     if (script !== undefined && script !== "-") {
-      if (!isDynamic(script)) collect(script, out, child(state));
+      if (!isDynamic(script)) collect(script, out, inner());
     }
     // A shell without a script reads its commands from standard input:
     // `bash <<EOF`, `bash <<< "..."`, `pwsh -Command - <<EOF`.
-    else for (const body of stdin) collect(body, out, child(state));
+    else for (const body of stdin) collect(body, out, inner());
   } else if (args.includes("{")) {
     // A PowerShell script block, e.g. `ForEach-Object { gh pr view $_ }`: its
     // first statement shares this segment (later ones are segments of their own).
@@ -312,7 +344,7 @@ function collect(input: string, out: Invocation[], state: State): void {
     expansions = [];
     stdin = [];
   };
-  for (const token of tokenize(input)) {
+  for (const token of state.dialect === "powershell" ? tokenizePowerShell(input) : tokenize(input)) {
     if (token.kind === "word") {
       segment.push(token.value);
       quoted.push(token.quoted);
@@ -348,8 +380,17 @@ function collect(input: string, out: Invocation[], state: State): void {
  * line names is checked. A variable the line set is substituted; any other
  * expansion becomes DYNAMIC_WORD or DYNAMIC_WORDS, which `env` (the
  * environment the line starts in) can only narrow to one word (#160).
+ * `dialect` is the shell that reads the line: a PowerShell line is read with
+ * PowerShell's rules (`ps-tokens.ts`), and each call also as Windows
+ * PowerShell 5.1 passes it on (#159).
  */
-export function findInvocations(command: string, guardedBins: string[], baseCwd?: string, env?: NodeJS.ProcessEnv): Invocation[] {
+export function findInvocations(
+  command: string,
+  guardedBins: string[],
+  baseCwd?: string,
+  env?: NodeJS.ProcessEnv,
+  dialect: Dialect = "bash",
+): Invocation[] {
   const out: Invocation[] = [];
   collect(command, out, {
     base: baseCwd,
@@ -359,6 +400,8 @@ export function findInvocations(command: string, guardedBins: string[], baseCwd?
     unset: new Set(),
     line: command,
     guarded: new Set(guardedBins),
+    dialect,
+    lists: new Set(),
     ...(env ? { env } : {}),
   });
   return out;

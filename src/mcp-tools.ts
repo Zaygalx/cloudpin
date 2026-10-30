@@ -69,15 +69,21 @@ export function cloudpinTools(deps: GuardDeps, ctx: ToolContext): McpTool[] {
         properties: {
           command: { type: "string", description: "The full command line, e.g. \"cd web && vercel deploy --prod\"." },
           cwd: { type: "string", description: "Folder the command would run in; defaults to the current one." },
+          shell: {
+            type: "string",
+            enum: ["bash", "powershell"],
+            description: "The shell that would run it: powershell for a PowerShell tool's command; defaults to bash.",
+          },
         },
         required: ["command"],
       },
       call: async (args) => {
-        const { command } = args;
+        const { command, shell = "bash" } = args;
         if (typeof command !== "string" || command.trim() === "") throw new Error("command must be a non-empty string");
+        if (shell !== "bash" && shell !== "powershell") throw new Error('shell must be "bash" or "powershell"');
         const cwd = folder(ctx, args.cwd);
         // Agent mode, as in the hook: CLOUDPIN_SKIP, CLOUDPIN_CONFIRM, CLOUDPIN_ENV and CLOUDPIN_BRANCH inside the command don't count.
-        return { mode: "agent", calls: await explain(command, { mode: "agent", cwd, env: ctx.env }, deps) };
+        return { mode: "agent", calls: await explain(command, { mode: "agent", cwd, env: ctx.env, shell }, deps) };
       },
     },
   ];
