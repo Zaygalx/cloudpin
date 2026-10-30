@@ -37,6 +37,7 @@ Run the type-check and the tests as separate commands and read each exit code.
 | `src/mcp.ts`, `src/mcp-tools.ts` | `cloudpin mcp`: the JSON-RPC stdio server, and its two read-only tools |
 | `plugin/`, `.claude-plugin/marketplace.json` | The Claude Code plugin (hook, MCP server, skill) and its marketplace |
 | `src/shellwords.ts` | Finds CLI calls inside a full shell command line |
+| `src/shell-tokens.ts` | The tokenizer behind it: words, operators, `$( )` and heredocs, read as bash reads them |
 | `src/redirections.ts` | Shell redirections (`2>&1`, `>out`, `*>`), which shellwords drops from a call's arguments |
 | `src/hooks/agents.ts` | One adapter per AI agent's hook format |
 | `src/cache.ts` | The identity cache |
