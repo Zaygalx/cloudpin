@@ -27,7 +27,16 @@ export interface CommandContext {
 export type Identity = Record<string, string>;
 
 export type Resolution =
-  | { kind: "identity"; identity: Identity; source: string }
+  | {
+      kind: "identity";
+      identity: Identity;
+      source: string;
+      /**
+       * Fields the command's identity can't be read for, each with why (#165): guard stops a command whose
+       * pin sets one of them, as "can't tell", and checks the other fields as usual.
+       */
+      unknown?: Record<string, string>;
+    }
   | { kind: "logged-out"; hint: string }
   | {
       kind: "error";

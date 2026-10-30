@@ -98,6 +98,17 @@ describe("guard", () => {
     });
   });
 
+  it("can't tell a pinned field the identity can't be read for, and checks the rest as usual (#165)", async () => {
+    const unknown = (field: string): Resolution => ({ ...me, unknown: { [field]: "user is unreadable" } });
+    expect(await guard(req("gh", ["pr", "list"]), deps(unknown("user")))).toMatchObject({
+      action: "block",
+      uncertain: true,
+      problems: ["user is unreadable"],
+      fix: "gh auth status",
+    });
+    expect(await guard(req("gh", ["pr", "list"]), deps(unknown("host")))).toEqual({ action: "allow", reason: "match" });
+  });
+
   it("fails closed on an invalid config file", async () => {
     const v = await guard(req("gh", ["pr", "list"]), deps(me, new ConfigError("/repo/.cloudpin.yml: bad")));
     expect(v).toMatchObject({ action: "block", problems: ["invalid config: /repo/.cloudpin.yml: bad"] });

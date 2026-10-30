@@ -12,6 +12,9 @@ function fakeExec(result: { code: number; stdout?: string; stderr?: string }) {
 }
 
 const ctx = (args: string[], env: NodeJS.ProcessEnv = {}) => ({ args, env, cwd: "/repo" });
+// Only these fields: the full list can hold credentials, and the output is cached.
+const FORMAT =
+  "--format=json(core.account,core.project,auth.impersonate_service_account,auth.access_token_file,auth.credential_file_override)";
 // Shape observed from `gcloud config list --format=json` (SDK 588).
 const listJson = (core: Record<string, string>) =>
   JSON.stringify({ core: { disable_usage_reporting: "True", ...core } });
@@ -49,7 +52,7 @@ describe("gcloud.resolve", () => {
       identity: { account: "me@x.com", project: "proj-1" },
       source: "gcloud config list",
     });
-    expect(calls[0]?.args).toEqual(["config", "list", "--format=json(core.account,core.project)"]);
+    expect(calls[0]?.args).toEqual(["config", "list", FORMAT]);
   });
 
   it("passes the command's --account, --project and --configuration flags through", async () => {
@@ -59,7 +62,7 @@ describe("gcloud.resolve", () => {
       exec,
     );
     expect(calls[0]?.args).toEqual([
-      "config", "list", "--format=json(core.account,core.project)",
+      "config", "list", FORMAT,
       "--account", "a2@x.com", "--project", "p2", "--configuration", "work",
     ]);
   });

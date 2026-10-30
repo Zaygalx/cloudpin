@@ -162,7 +162,7 @@ the file:
 |---|---|---|
 | `az` | subscription ID, tenant ID | `--subscription`, `AZURE_CONFIG_DIR` |
 | `aws` | account ID | `--profile`, `AWS_PROFILE`, access key variables, SSO |
-| `gcloud` | account, project | `--account`, `--project`, `--configuration`, `CLOUDSDK_*` |
+| `gcloud` | account, project | `--account`, `--project`, `--configuration`, `--impersonate-service-account`, `--access-token-file`, `CLOUDSDK_*` |
 | `vercel` / `vc` | team ID | `--scope`, `--team`, `--token`, `VERCEL_TOKEN`, `VERCEL_ORG_ID`, linked project (`.vercel/project.json` or a repository's `.vercel/repo.json`) |
 | `gh` | user, host | `--hostname`, `GH_HOST`, `GH_TOKEN`, `GITHUB_TOKEN` |
 | `supabase` | project ref, organisation (optional) | `--project-ref`, `SUPABASE_PROJECT_ID`, the project `supabase link` saved, `--workdir`, `SUPABASE_WORKDIR`, `--profile`, `SUPABASE_ACCESS_TOKEN` |
@@ -175,6 +175,9 @@ pins the namespace only if your context sets one. With a namespace pinned, `-A` 
 Commands that never reach a cluster (`kubectl config`, `kubectl kustomize`, `helm template`, `helm repo`, ...) are
 never blocked, and standalone `kustomize` isn't guarded at all. cloudpin can't see a `namespace:` written inside a
 manifest you apply, so pin the namespace and keep manifests namespace-free if that matters to you.
+
+For gcloud, an impersonated service account (the last one in a delegation chain) is the account compared with the pin;
+with an access token or token file the account can't be known, so an account pin gives "can't tell".
 
 For Supabase the project ref is worked out the way the CLI does it, without a network call: `--project-ref`, then
 `SUPABASE_PROJECT_ID`, then the project `supabase link` saved in `supabase/.temp/`. A linked branch counts as its

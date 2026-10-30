@@ -213,7 +213,9 @@ describe("each provider declares the flags its resolve reads (#160)", () => {
   });
 
   it("the scan finds every flag a known provider reads (control)", () => {
-    expect(flagsRead(read("gcloud.ts")).sort()).toEqual(["--account", "--configuration", "--project"]);
+    expect(flagsRead(read("gcloud.ts")).sort()).toEqual([
+      "--access-token-file", "--account", "--configuration", "--impersonate-service-account", "--project",
+    ]);
     expect(flagsRead(read("kubernetes.ts"))).toEqual(expect.arrayContaining(["--context", "--namespace", "-n", "-s", "--kuberc"]));
   });
 });
