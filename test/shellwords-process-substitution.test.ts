@@ -4,14 +4,14 @@ import type { GuardDeps } from "../src/guard.js";
 import { AGENTS, runHook } from "../src/hooks/agents.js";
 import { azure } from "../src/providers/azure.js";
 import { findInvocations } from "../src/shellwords.js";
-import type { Exec, ProviderDef } from "../src/types.js";
+import { DYNAMIC_WORD, type Exec, type ProviderDef } from "../src/types.js";
 import { tempDir } from "./tmp.js";
 
 // #156. bash(1), Process Substitution: an unquoted `<(list)` or `>(list)` runs the list and is replaced by
 // one argument, a /dev/fd/N path, joined with any text next to it (`a<(true)b` passes `a/dev/fd/63b`), and
 // the command keeps reading its words. Checked in bash: `p <(true) --x y` passes [/dev/fd/63] [--x] [y].
 // So it is read like `$(...)`: part of a word whose value is only known when it runs, and the commands
-// inside are still found. In double quotes it is plain text.
+// inside are still found. In double quotes it is plain text. Like `$(...)` it is one word, DYNAMIC_WORD (#160).
 
 const GUARDED = ["az", "aws", "gcloud", "vercel", "gh"];
 const calls = (cmd: string) => findInvocations(cmd, GUARDED).map((i) => [i.bin, i.args]);
@@ -19,28 +19,28 @@ const calls = (cmd: string) => findInvocations(cmd, GUARDED).map((i) => [i.bin, 
 describe("findInvocations: a process substitution is one argument and does not end the command (#156)", () => {
   it.each([
     // The issue's cases.
-    ["az group list <(true) --subscription other", ["group", "list", "", "--subscription", "other"]],
-    ["az group list >(cat) --subscription other", ["group", "list", "", "--subscription", "other"]],
+    ["az group list <(true) --subscription other", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
+    ["az group list >(cat) --subscription other", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
     // Before, between and after the flags.
-    ["az <(true) group list --subscription other", ["", "group", "list", "--subscription", "other"]],
-    ["az group list --subscription <(true) other", ["group", "list", "--subscription", "", "other"]],
-    ["az group list --subscription other <(true)", ["group", "list", "--subscription", "other", ""]],
-    ["az >(cat) group list --subscription other", ["", "group", "list", "--subscription", "other"]],
-    ["az group list --subscription >(cat) other", ["group", "list", "--subscription", "", "other"]],
-    ["az group list --subscription other >(cat)", ["group", "list", "--subscription", "other", ""]],
+    ["az <(true) group list --subscription other", [DYNAMIC_WORD, "group", "list", "--subscription", "other"]],
+    ["az group list --subscription <(true) other", ["group", "list", "--subscription", DYNAMIC_WORD, "other"]],
+    ["az group list --subscription other <(true)", ["group", "list", "--subscription", "other", DYNAMIC_WORD]],
+    ["az >(cat) group list --subscription other", [DYNAMIC_WORD, "group", "list", "--subscription", "other"]],
+    ["az group list --subscription >(cat) other", ["group", "list", "--subscription", DYNAMIC_WORD, "other"]],
+    ["az group list --subscription other >(cat)", ["group", "list", "--subscription", "other", DYNAMIC_WORD]],
     // Several, attached to each other.
-    ["az group list <(true)>(cat) --subscription other", ["group", "list", "", "--subscription", "other"]],
-    ["az group list <(true) >(cat) --subscription other", ["group", "list", "", "", "--subscription", "other"]],
+    ["az group list <(true)>(cat) --subscription other", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
+    ["az group list <(true) >(cat) --subscription other", ["group", "list", DYNAMIC_WORD, DYNAMIC_WORD, "--subscription", "other"]],
   ])("%j", (cmd, args) => {
     expect(calls(cmd)).toEqual([["az", args]]);
   });
 
   it.each([
     // Joined with text it is one word, and the text around it stays in that word.
-    ["az group list x<(true)y --subscription other", ["group", "list", "xy", "--subscription", "other"]],
-    ["az group list --file=<(true) --subscription other", ["group", "list", "--file=", "--subscription", "other"]],
-    ["az group list 2<(true) --subscription other", ["group", "list", "2", "--subscription", "other"]],
-    ["az group list a>(cat)b --subscription other", ["group", "list", "ab", "--subscription", "other"]],
+    ["az group list x<(true)y --subscription other", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
+    ["az group list --file=<(true) --subscription other", ["group", "list", `--file=${DYNAMIC_WORD}`, "--subscription", "other"]],
+    ["az group list 2<(true) --subscription other", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
+    ["az group list a>(cat)b --subscription other", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
     // Quoted, it is text: bash passes `<(true)` as it is.
     ['az group list "<(true)" --subscription other', ["group", "list", "<(true)", "--subscription", "other"]],
     ["az group list '>(cat)' --subscription other", ["group", "list", ">(cat)", "--subscription", "other"]],
@@ -59,30 +59,30 @@ describe("findInvocations: a process substitution is one argument and does not e
   it("finds the calls inside it, and the command around it keeps its flags", () => {
     expect(calls("az group list <(az account show) --subscription other")).toEqual([
       ["az", ["account", "show"]],
-      ["az", ["group", "list", "", "--subscription", "other"]],
+      ["az", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
     ]);
     expect(calls("az group list >(gh api user) --subscription other")).toEqual([
       ["gh", ["api", "user"]],
-      ["az", ["group", "list", "", "--subscription", "other"]],
+      ["az", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
     ]);
   });
 
   it("reads nested substitutions, and quotes inside them", () => {
     expect(calls("az group list <(cat <(gh api user)) --subscription other")).toEqual([
       ["gh", ["api", "user"]],
-      ["az", ["group", "list", "", "--subscription", "other"]],
+      ["az", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
     ]);
     expect(calls("az group list <(echo $(gh api user)) --subscription other")).toEqual([
       ["gh", ["api", "user"]],
-      ["az", ["group", "list", "", "--subscription", "other"]],
+      ["az", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
     ]);
     expect(calls("az group list $(cat >(gh api user)) --subscription other")).toEqual([
       ["gh", ["api", "user"]],
-      ["az", ["group", "list", "", "--subscription", "other"]],
+      ["az", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
     ]);
     expect(calls('az group list <(echo ")"; gh api user) --subscription other')).toEqual([
       ["gh", ["api", "user"]],
-      ["az", ["group", "list", "", "--subscription", "other"]],
+      ["az", ["group", "list", DYNAMIC_WORD, "--subscription", "other"]],
     ]);
   });
 
@@ -98,7 +98,7 @@ describe("findInvocations: a process substitution is one argument and does not e
 
   it("still splits commands after it", () => {
     expect(calls("az group list <(true) && gh pr list")).toEqual([
-      ["az", ["group", "list", ""]],
+      ["az", ["group", "list", DYNAMIC_WORD]],
       ["gh", ["pr", "list"]],
     ]);
   });

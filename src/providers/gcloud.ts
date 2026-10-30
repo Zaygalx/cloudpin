@@ -20,6 +20,8 @@ export const gcloud: ProviderDef<"gcloud"> = {
   name: "gcloud",
   bins: ["gcloud"],
   statusCommand: "gcloud config list",
+  // The flags resolve reads (#160).
+  targetFlags: IDENTITY_FLAGS,
 
   cacheInputs(env) {
     const dir =

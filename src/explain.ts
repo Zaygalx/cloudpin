@@ -97,7 +97,7 @@ export async function explain(command: string | string[], opts: ExplainOptions, 
   const bins = [...deps.providers.flatMap((p) => p.bins), "cloudpin"];
   const calls: Invocation[] =
     typeof command === "string"
-      ? findInvocations(command, bins, opts.cwd)
+      ? findInvocations(command, bins, opts.cwd, opts.env)
       : command.length > 0
         ? [{ bin: command[0]!, args: command.slice(1), env: {} }]
         : [];

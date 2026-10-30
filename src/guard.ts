@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import { type ActiveEnvironment, ConfigError, findConfig, type FoundConfig, type Provider } from "./config.js";
 import { envNameMatches } from "./cache.js";
+import { dynamicTarget } from "./dynamic-args.js";
 import { isReadOnly } from "./readonly.js";
 import { type Exec, type ProviderDef, type Resolution, UNKNOWN_VALUE } from "./types.js";
 
@@ -127,6 +128,9 @@ export async function guard(req: GuardRequest, deps: GuardDeps, trace: Trace = {
     if (result.notFound) cliMissing = true;
     return result;
   };
+  // An argument only known when it runs (#160), before resolve, so no such value reaches a CLI.
+  const dynamic = dynamicTarget(req.args, provider.targetFlags ?? []);
+  if (dynamic) return { ...base, uncertain: true, problems: [dynamic.problem], fix: dynamic.fix };
   // A variable the line sets from something only known when it runs (#86): if it
   // decides this CLI's account, cloudpin can't tell which account will be used.
   const identityVars = provider.cacheInputs(req.env).env;

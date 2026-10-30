@@ -169,6 +169,8 @@ export const cloudflare: ProviderDef<"cloudflare"> = {
   name: "cloudflare",
   bins: ["wrangler", "wrangler2", "cf-wrangler"],
   statusCommand: "wrangler whoami",
+  // The flags resolve reads (#160).
+  targetFlags: ["--cwd", "--config", "-c", "--env", "-e", "--env-file", "--envFile"],
 
   cacheInputs(env) {
     // Only `wrangler whoami` is cached. Its OAuth login lives in the global

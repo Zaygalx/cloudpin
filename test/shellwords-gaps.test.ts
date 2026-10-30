@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { findInvocations } from "../src/shellwords.js";
+import { DYNAMIC_WORDS } from "../src/types.js";
 
 const GUARDED = ["az", "aws", "gcloud", "vercel", "gh"];
 const find = (cmd: string, cwd?: string) => findInvocations(cmd, GUARDED, cwd);
@@ -94,7 +95,8 @@ describe("PowerShell forms agents use (#7)", () => {
   });
 
   it("does not treat a bare variable as a command", () => {
-    expect(bins("$files | ForEach-Object { gh pr view $_ }")).toEqual(["gh pr view $_"]);
+    // `$_` is known only when it runs, so it is marked as such (#160).
+    expect(bins("$files | ForEach-Object { gh pr view $_ }")).toEqual([`gh pr view ${DYNAMIC_WORDS}`]);
   });
 
   it("finds a CLI behind the call operator", () => {

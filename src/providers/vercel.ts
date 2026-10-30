@@ -252,6 +252,10 @@ export const vercel: ProviderDef<"vercel"> = {
   name: "vercel",
   bins: ["vercel", "vc"],
   statusCommand: "vercel whoami",
+  // The flags resolve reads (#160).
+  targetFlags: [
+    "--token", "-t", "--global-config", "-Q", "--local-config", "-A", "--scope", "-S", "--team", "-T", "--cwd", "--project",
+  ],
 
   cacheInputs(env) {
     // config.json holds currentTeam (`vercel switch` rewrites it); auth.json is

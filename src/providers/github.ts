@@ -29,6 +29,8 @@ export const github: ProviderDef<"github"> = {
   name: "github",
   bins: ["gh"],
   statusCommand: "gh auth status",
+  // The flags resolve reads (#160).
+  targetFlags: ["--hostname"],
 
   cacheInputs(env) {
     // hosts.yml holds the active user per host; `gh auth switch` rewrites it.

@@ -17,6 +17,8 @@ export const aws: ProviderDef<"aws"> = {
   name: "aws",
   bins: ["aws"],
   statusCommand: "aws sts get-caller-identity",
+  // The flags resolve reads (#160).
+  targetFlags: ["--profile"],
 
   cacheInputs(env) {
     const dir = join(home(env), ".aws");

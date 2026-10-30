@@ -13,6 +13,8 @@ export const azure: ProviderDef<"azure"> = {
   name: "azure",
   bins: ["az"],
   statusCommand: "az account show",
+  // The flags resolve reads (#160).
+  targetFlags: ["--subscription"],
 
   cacheInputs(env) {
     // `az login` and `az account set` rewrite azureProfile.json (observed).

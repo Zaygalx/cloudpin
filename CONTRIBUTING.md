@@ -50,7 +50,9 @@ What to pin: a stable ID (subscription ID, account ID, project ref), never a dis
 
 1. Its pin section in `src/config.ts` (`Pins` and `SCHEMA`), and in `src/init.ts` (`PIN_FIELDS`).
 2. `src/providers/<name>.ts` implementing `ProviderDef`: `isExempt`, `resolve`, `compare`, `switchHint`,
-   `statusCommand` and `cacheInputs`. Register it in `src/providers/index.ts`.
+   `statusCommand`, `cacheInputs` and `targetFlags` (every flag `resolve` reads, so a value only known when the
+   command runs gives "can't tell"; `test/hook-dynamic-values.test.ts` checks the list). Register it in
+   `src/providers/index.ts`.
 3. Its read-only rules in `src/readonly.ts` (TypeScript will tell you the entry is missing).
 4. Tests first, in `test/<name>.test.ts`: a fake `Exec` (see `test/github.test.ts`) and `tempDir()` from
    `test/tmp.ts` for folders. Cover each source of the account and their order, logged out, a bad token (named,

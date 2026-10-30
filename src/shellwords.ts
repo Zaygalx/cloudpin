@@ -1,8 +1,9 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { commandName } from "./guard.js";
-import { tokenize } from "./shell-tokens.js";
-import { UNKNOWN_VALUE } from "./types.js";
+import { type Expansion, tokenize } from "./shell-tokens.js";
+import { DYNAMIC_WORD, DYNAMIC_WORDS, UNKNOWN_VALUE } from "./types.js";
+import { expandWord, isDynamic, substitute, type Variables } from "./word-expansion.js";
 
 export interface Invocation {
   /** Executable as written, e.g. "gh" or "/usr/bin/gh". */
@@ -24,7 +25,6 @@ export interface Invocation {
 export { UNKNOWN_VALUE };
 
 const ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s;
-const VARIABLE = /^\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\})$/;
 // Words that run the command after them (shell keywords, prefixes, runners).
 const PASS_THROUGH = new Set([
   "sudo", "command", "time", "nohup", "exec", "builtin", "nice",
@@ -64,7 +64,23 @@ interface State {
   /** The whole command line, to spot CLI names behind an unknown `$VAR` command. */
   line: string;
   guarded: Set<string>;
+  /** The environment the line starts in, when given: only to tell that an unknown variable is one word (#160). */
+  env?: NodeJS.ProcessEnv;
 }
+
+/** The variables the line set, as word expansion reads them (#160). */
+const variables = (state: State): Variables => ({
+  known(name) {
+    if (state.unset.has(name)) return "";
+    const value = state.vars[name];
+    return value === UNKNOWN_VALUE ? undefined : value;
+  },
+  oneWord(name) {
+    // Never its value, which may be a secret: only that it can't split or be a flag.
+    const value = name in state.vars ? undefined : state.env?.[name];
+    return value !== undefined && !/\s/.test(value) && !value.startsWith("-");
+  },
+});
 
 /** A copy for code that runs in a child shell, whose `cd` and variables do not come back. */
 const child = (state: State): State => ({
@@ -100,7 +116,12 @@ function analyse(
   state: State,
   quoted: boolean[] = [],
   dynamic: boolean[] = [],
+  expansions: (Expansion[] | undefined)[] = [],
 ): void {
+  const vars = variables(state);
+  // An assignment word's value with the variables the line set; UNKNOWN_VALUE when a part isn't known.
+  const valueOf = (k: number, set: RegExpExecArray): string =>
+    dynamic[k] ? (substitute(words[k]!, expansions[k] ?? [], vars)?.slice(set[1]!.length + 1) ?? UNKNOWN_VALUE) : set[2]!;
   const psEnv = PS_ENV.exec(words[0] ?? "");
   if (psEnv && (psEnv[2] !== undefined || words[1] === "=")) {
     // A single literal (`'other'`, `other`) is known; anything else (an expression,
@@ -120,13 +141,14 @@ function analyse(
     const inline = ps[2] !== undefined && ps[2] !== "";
     const rest = inline ? [ps[2]!, ...words.slice(1)] : words.slice(ps[2] !== undefined ? 1 : 2);
     const restQuoted = inline ? quoted : quoted.slice(ps[2] !== undefined ? 1 : 2);
-    const restDynamic = inline ? dynamic : dynamic.slice(ps[2] !== undefined ? 1 : 2);
+    const restDynamic = inline ? [false, ...dynamic.slice(1)] : dynamic.slice(ps[2] !== undefined ? 1 : 2);
+    const restExpansions = inline ? [undefined, ...expansions.slice(1)] : expansions.slice(ps[2] !== undefined ? 1 : 2);
     if (rest.length === 1 && restQuoted[0]) {
       state.vars[ps[1]!] = rest[0]!;
       return;
     }
     delete state.vars[ps[1]!];
-    if (rest.length > 0) analyse(rest, stdin, out, state, restQuoted, restDynamic);
+    if (rest.length > 0) analyse(rest, stdin, out, state, restQuoted, restDynamic, restExpansions);
     return;
   }
   const env: Record<string, string> = {};
@@ -142,7 +164,7 @@ function analyse(
     const name = commandName(word);
     const wrapper = VALUE_WRAPPERS[name];
     if (assignment) {
-      env[assignment[1]!] = dynamic[i] ? UNKNOWN_VALUE : assignment[2]!;
+      env[assignment[1]!] = valueOf(i, assignment);
       i++;
     } else if (wrapper) {
       i++;
@@ -164,26 +186,39 @@ function analyse(
   }
   let bin = words[i]!;
   let args = words.slice(i + 1);
-
-  // A command held in a variable: `CLI=vercel; $CLI deploy`.
-  const variable = VARIABLE.exec(bin);
-  if (variable) {
-    const held = state.vars[variable[1] ?? variable[2]!];
-    const value = held === UNKNOWN_VALUE ? undefined : held;
-    if (value === undefined) {
-      // Unknown here (set elsewhere): check every guarded CLI the line names.
+  // Where `args` starts in `words`, while it holds the words as typed.
+  let from = i + 1;
+  let name = commandName(bin);
+  if (!EXPORTERS.has(name) && name !== "unset" && name !== "cd") {
+    // The words bash passes on: the variables the line set substituted, the rest marked as known only
+    // when it runs (#160).
+    const expanded = words
+      .slice(i)
+      .flatMap((w, k) => (expansions[i + k] ? expandWord(w, expansions[i + k]!, quoted[i + k] ?? false, vars) : [w]));
+    if (expanded.length === 0) return;
+    if (expanded[0] === DYNAMIC_WORD || expanded[0] === DYNAMIC_WORDS) {
+      // A command held in a variable set elsewhere: check every guarded CLI the line names.
       // A bare `$files` is most likely a value (PowerShell pipes it), not a command.
-      if (args.length > 0) for (const named of namedClis(state)) out.push(invocation(named, args, env, state));
+      if (expanded.length > 1) for (const named of namedClis(state)) out.push(invocation(named, expanded.slice(1), env, state));
       return;
     }
-    // Unquoted expansion splits on whitespace.
-    const [first, ...rest] = value.trim().split(/\s+/);
-    if (!first) return;
-    bin = first;
-    args = [...rest, ...args];
+    bin = expanded[0]!;
+    name = commandName(bin);
+    if (state.guarded.has(name)) {
+      out.push(invocation(bin, expanded.slice(1), env, state));
+      return;
+    }
+    // eval, shells, find and script blocks get the words as typed, which the code they run expands;
+    // from a variable (`SH=bash; $SH -c ...`) they no longer line up with what was typed.
+    if (dynamic[i]) [args, from] = [expanded.slice(1), -1];
   }
+  // The words from `a` to `b` of `args`, with what analyse needs to expand them.
+  const part = (a: number, b?: number): Parameters<typeof analyse> => {
+    const end = b === undefined ? undefined : from + b;
+    const slice = <T>(list: T[]) => (from === -1 ? [] : list.slice(from + a, end));
+    return [args.slice(a, b), [], out, state, slice(quoted), slice(dynamic), slice(expansions)];
+  };
 
-  const name = commandName(bin);
   if (EXPORTERS.has(name)) {
     // `declare`/`typeset` export only with -x; `export -n` un-exports (left alone: it never adds a variable).
     const flags = args.filter((a) => a.startsWith("-"));
@@ -193,7 +228,7 @@ function analyse(
     args.forEach((arg, k) => {
       if (arg.startsWith("-")) return;
       const set = ASSIGNMENT.exec(arg);
-      if (set) assign(state, set[1]!, dynamic[offset + k] ? UNKNOWN_VALUE : set[2]!, true);
+      if (set) assign(state, set[1]!, valueOf(offset + k, set), true);
       else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(arg) && arg in state.vars) assign(state, arg, state.vars[arg]!, true);
     });
     return;
@@ -217,23 +252,23 @@ function analyse(
     }
     return;
   }
-  if (state.guarded.has(name)) {
-    out.push(invocation(bin, args, env, state));
-  } else if (name === "eval") {
+  if (name === "eval") {
     // eval joins its arguments and runs them as a command line, in this shell.
-    collect(args.join(" "), out, state);
+    if (!isDynamic(args.join(" "))) collect(args.join(" "), out, state);
   } else if (name === "find") {
     for (let k = 0; k < args.length; k++) {
       if (!FIND_EXEC.has(args[k]!)) continue;
       const end = args.findIndex((a, j) => j > k && (a === ";" || a === "+"));
-      analyse(args.slice(k + 1, end === -1 ? undefined : end), [], out, state);
+      analyse(...part(k + 1, end === -1 ? undefined : end));
     }
   } else if (SHELLS.has(name) || POWERSHELLS.has(name)) {
     const flag = args.findIndex((a) =>
       SHELLS.has(name) ? /^-[a-z]*c$/.test(a) : /^-(c|command)$/i.test(a),
     );
     const script = flag === -1 ? undefined : args[flag + 1];
-    if (script !== undefined && script !== "-") collect(script, out, child(state));
+    if (script !== undefined && script !== "-") {
+      if (!isDynamic(script)) collect(script, out, child(state));
+    }
     // A shell without a script reads its commands from standard input:
     // `bash <<EOF`, `bash <<< "..."`, `pwsh -Command - <<EOF`.
     else for (const body of stdin) collect(body, out, child(state));
@@ -242,7 +277,7 @@ function analyse(
     // first statement shares this segment (later ones are segments of their own).
     const open = args.indexOf("{");
     const close = args.lastIndexOf("}");
-    analyse(args.slice(open + 1, close > open ? close : undefined), [], out, state);
+    analyse(...part(open + 1, close > open ? close : undefined));
   }
 }
 
@@ -265,14 +300,16 @@ function collect(input: string, out: Invocation[], state: State): void {
   let segment: string[] = [];
   let quoted: boolean[] = [];
   let dynamic: boolean[] = [];
+  let expansions: (Expansion[] | undefined)[] = [];
   let stdin: string[] = [];
   // What to go back to when a ( ) subshell ends: its `cd` and variables don't come back (#86).
   const saved: State[] = [];
   const end = () => {
-    if (segment.length > 0) analyse(segment, stdin, out, state, quoted, dynamic);
+    if (segment.length > 0) analyse(segment, stdin, out, state, quoted, dynamic, expansions);
     segment = [];
     quoted = [];
     dynamic = [];
+    expansions = [];
     stdin = [];
   };
   for (const token of tokenize(input)) {
@@ -280,6 +317,7 @@ function collect(input: string, out: Invocation[], state: State): void {
       segment.push(token.value);
       quoted.push(token.quoted);
       dynamic.push(token.dynamic);
+      expansions.push(token.expansions);
     }
     else if (token.kind === "stdin") stdin.push(token.body);
     // Runs where it appears, in a child shell, so a `cd` inside does not leak.
@@ -307,9 +345,11 @@ function collect(input: string, out: Invocation[], state: State): void {
  * call's `cwd` (scoped to its subshell), so `cd ../other && vercel deploy` is
  * checked against ../other's pins. A command held in a variable is resolved
  * from assignments earlier in the line; if it can't be, every guarded CLI the
- * line names is checked.
+ * line names is checked. A variable the line set is substituted; any other
+ * expansion becomes DYNAMIC_WORD or DYNAMIC_WORDS, which `env` (the
+ * environment the line starts in) can only narrow to one word (#160).
  */
-export function findInvocations(command: string, guardedBins: string[], baseCwd?: string): Invocation[] {
+export function findInvocations(command: string, guardedBins: string[], baseCwd?: string, env?: NodeJS.ProcessEnv): Invocation[] {
   const out: Invocation[] = [];
   collect(command, out, {
     base: baseCwd,
@@ -319,6 +359,7 @@ export function findInvocations(command: string, guardedBins: string[], baseCwd?
     unset: new Set(),
     line: command,
     guarded: new Set(guardedBins),
+    ...(env ? { env } : {}),
   });
   return out;
 }

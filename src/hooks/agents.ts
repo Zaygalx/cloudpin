@@ -225,7 +225,7 @@ async function checkCommand(
   const bins = [...deps.providers.flatMap((p) => p.bins), "cloudpin"];
   const blocks: string[] = [];
   const confirmations: Confirmation[] = [];
-  for (let inv of findInvocations(call.command, bins, call.cwd)) {
+  for (let inv of findInvocations(call.command, bins, call.cwd, env)) {
     if (commandName(inv.bin) === "cloudpin") {
       // A bare `cloudpin use` only shows the current environment.
       if (inv.args[0] === "use" && inv.args.length > 1) confirmations.push(useConfirmation(inv.args));

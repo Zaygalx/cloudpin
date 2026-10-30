@@ -1,11 +1,26 @@
 import { isStream, redirection } from "./redirections.js";
 
+/**
+ * A part of a word known only when it runs (#160): `length` characters of the word's value from `at` are
+ * the expansion as typed, none for `$( )`, backticks, `<( )` and `$(( ))`, whose text is left out. `name`
+ * is set for `$NAME` and `${NAME}`, which a line can set earlier; `spread` when it may be several words,
+ * flags included: an unquoted variable, "$@" or "${a[@]}". A `$( )` or backticks is read as one word
+ * that is not a flag, even unquoted (owner decision).
+ */
+export interface Expansion {
+  at: number;
+  length: number;
+  name?: string;
+  spread: boolean;
+}
+
 export type Token =
   /**
    * `quoted`: some of it was in quotes, so `"vercel"` is a string, not a command.
    * `dynamic`: it contains `$(...)`, `<(...)`, backticks or a `$NAME` expansion, so its value is only known when it runs.
+   * `expansions`: where, when it is dynamic.
    */
-  | { kind: "word"; value: string; quoted: boolean; dynamic: boolean }
+  | { kind: "word"; value: string; quoted: boolean; dynamic: boolean; expansions?: Expansion[] }
   /** A control operator: ; & | newline, or ( and ) which open and close a subshell. */
   | { kind: "op"; op: string }
   /** $( ... ), <( ... ), >( ... ) or backticks: a command line run in a subshell. */
@@ -45,6 +60,7 @@ function scan(input: string, from: number, nested: boolean, seen: Map<number, Sc
   let inWord = false;
   let quoted = false;
   let dynamic = false;
+  let expansions: Expansion[] = [];
   // The next word is a here-string (`<<< word`), not an argument.
   let hereString = false;
   // The next word is a redirection's target (#154).
@@ -52,15 +68,55 @@ function scan(input: string, from: number, nested: boolean, seen: Map<number, Sc
   // Heredocs whose bodies start after the next newline.
   const pending: { token: { kind: "stdin"; body: string }; delimiter: string; stripTabs: boolean }[] = [];
   const flush = () => {
-    if (inWord && !target) tokens.push(hereString ? { kind: "stdin", body: word } : { kind: "word", value: word, quoted, dynamic });
+    if (inWord && !target) {
+      tokens.push(
+        hereString
+          ? { kind: "stdin", body: word }
+          : { kind: "word", value: word, quoted, dynamic, ...(expansions.length > 0 ? { expansions } : {}) },
+      );
+    }
     if (inWord) hereString = target = false;
     word = "";
     inWord = false;
     quoted = false;
     dynamic = false;
+    expansions = [];
   };
-  // `$NAME` or `${NAME}` (not `$` alone or `$1`): an expansion outside single quotes.
-  const expands = (at: number) => /[A-Za-z_{]/.test(input[at + 1] ?? "");
+  // Notes a part of the word known only when it runs, starting here and `length` characters long.
+  const mark = (length: number, spread: boolean, name?: string) => {
+    expansions.push({ at: word.length, length, spread, ...(name === undefined ? {} : { name }) });
+    dynamic = true;
+  };
+  // Reads a parameter expansion at the "$": `$NAME`, `${...}` or a special parameter (`$@`, `$1`, `$?`),
+  // adding it to the word as typed. Returns the index after it, or -1 when the "$" is a plain character.
+  const readParameter = (at: number, inQuotes: boolean): number => {
+    const next = input[at + 1] ?? "";
+    let end: number;
+    let name: string | undefined;
+    // Several words even in quotes: "$@", "${a[@]}". One word in quotes: "$*", "${a[*]}".
+    let many = false;
+    let spread = !inQuotes;
+    if (next === "{") {
+      let depth = 0;
+      end = at + 1;
+      while (end < input.length && !(input[end] === "}" && --depth === 0)) if (input[end++] === "{") depth++;
+      const inner = input.slice(at + 2, end);
+      end = Math.min(end + 1, input.length);
+      if (/^[A-Za-z_]\w*$/.test(inner)) name = inner;
+      many = inner === "@" || /\[@\]$/.test(inner);
+    } else if (/[A-Za-z_]/.test(next)) {
+      name = /^[A-Za-z_]\w*/.exec(input.slice(at + 1))![0];
+      end = at + 1 + name.length;
+    } else if ("@*0123456789#?$!-".includes(next) && next !== "") {
+      end = at + 2;
+      many = next === "@";
+      // A number or the shell's flags: never several words.
+      if ("#?$!-".includes(next)) spread = false;
+    } else return -1;
+    mark(end - at, spread || many, name);
+    word += input.slice(at, end);
+    return end;
+  };
 
   // Reads $( ... ), <( ... ) or >( ... ) starting after the "(", with this same tokenizer, so quotes,
   // comments and heredoc bodies inside it are read as on the outer line (#161).
@@ -83,7 +139,7 @@ function scan(input: string, from: number, nested: boolean, seen: Map<number, Sc
   // backticks inside it run. Returns the index after the "))", or -1 where bash reads nested subshells
   // instead (the ")" that closes the first "(" is not followed by another) or a quote makes it unclear.
   const readArithmetic = (start: number): number => {
-    const mark = tokens.length;
+    const kept = tokens.length;
     let open = 0;
     let i = start;
     while (i < input.length && input[i] !== "'" && input[i] !== '"') {
@@ -99,7 +155,7 @@ function scan(input: string, from: number, nested: boolean, seen: Map<number, Sc
         i += c === "\\" ? 2 : 1;
       }
     }
-    tokens.length = mark;
+    tokens.length = kept;
     return -1;
   };
   // Reads $'...' starting after the "'", decoding escapes as bash does (bash(1), QUOTING). \u, \U, \c,
@@ -119,12 +175,12 @@ function scan(input: string, from: number, nested: boolean, seen: Map<number, Sc
         i += 2;
       } else if (code) {
         const value = parseInt(code[1] ?? code[2]!, code[1] ? 16 : 8);
-        if (value === 0 || value > 0x7f) dynamic = true;
+        if (value === 0 || value > 0x7f) mark(0, false);
         else word += String.fromCharCode(value);
         i = ANSI_C_CODE.lastIndex;
       } else {
         // bash keeps the backslash of an escape it does not know.
-        if (e && "uUc".includes(e)) dynamic = true;
+        if (e && "uUc".includes(e)) mark(2, false);
         word += c + e;
         i += 2;
       }
@@ -196,16 +252,15 @@ function scan(input: string, from: number, nested: boolean, seen: Map<number, Sc
           word += input[i + 1];
           i += 2;
         } else if (d === "$" && input[i + 1] === "(") {
-          dynamic = true;
+          mark(0, false);
           i = readDollarParen(i);
         } else if (d === "`") {
-          dynamic = true;
+          mark(0, false);
           i = readBacktick(i + 1);
-        } else {
-          if (d === "$" && expands(i)) dynamic = true;
+        } else if (d !== "$" || (n = readParameter(i, true)) === -1) {
           word += d;
           i++;
-        }
+        } else i = n;
       }
       i++;
     } else if (c === "$" && input[i + 1] === "'") {
@@ -224,14 +279,18 @@ function scan(input: string, from: number, nested: boolean, seen: Map<number, Sc
     } else if ("$<>".includes(c) && input[i + 1] === "(") {
       // $(...), or a process substitution <(...) >(...): one argument, joined with any text around it (#156).
       inWord = true;
-      dynamic = true;
-      i = c === "$" ? readDollarParen(i) : readParen(i + 2);
+      // One word: $(( )) is a number, <( ) a path, and an unquoted $( ) is read as one value that is not a
+      // flag (owner decision, #160), though bash would split its output.
+      const arithmetic = c === "$" && input[i + 2] === "(" ? readArithmetic(i + 3) : -1;
+      mark(0, false);
+      i = arithmetic !== -1 ? arithmetic : readParen(i + 2);
     } else if (c === "(" && input[i + 1] === "(" && !inWord && (n = readArithmetic(i + 2)) !== -1) {
       // An arithmetic command, (( ... )), or a C-style `for ((...))`.
       i = n;
     } else if (c === "`") {
       inWord = true;
-      dynamic = true;
+      // One value that is not a flag, like an unquoted $( ) (#160).
+      mark(0, false);
       i = readBacktick(i + 1);
     } else if (c === "#" && !inWord) {
       // A comment runs to the end of the line.
@@ -270,10 +329,11 @@ function scan(input: string, from: number, nested: boolean, seen: Map<number, Sc
       i++;
       if (c === "\n" && pending.length > 0) i = readBodies(i);
     } else {
-      if (c === "$" && expands(i)) dynamic = true;
-      word += c;
       inWord = true;
-      i++;
+      if (c !== "$" || (n = readParameter(i, false)) === -1) {
+        word += c;
+        i++;
+      } else i = n;
     }
   }
   flush();

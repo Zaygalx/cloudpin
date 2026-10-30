@@ -271,6 +271,11 @@ export const kubernetes: ProviderDef<"kubernetes"> = {
   name: "kubernetes",
   bins: ["kubectl", "helm"],
   statusCommand: "kubectl config view --minify",
+  // The flags resolve reads (#160).
+  targetFlags: [
+    "--kubeconfig", "--context", "--cluster", "--server", "-s", "--namespace", "-n", "--kuberc",
+    "--kube-context", "--kube-apiserver",
+  ],
 
   cacheInputs() {
     // Identity is read from the kubeconfig on every command; nothing is spawned or cached.

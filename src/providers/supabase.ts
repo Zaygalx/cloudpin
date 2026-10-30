@@ -95,6 +95,8 @@ export const supabase: ProviderDef<"supabase"> = {
   name: "supabase",
   bins: ["supabase"],
   statusCommand: "supabase projects list",
+  // The flags resolve reads (#160).
+  targetFlags: ["--workdir", "--db-url", "--project-ref", "--project-id", "--profile"],
 
   cacheInputs(env) {
     // The token may also be in the OS keyring, which can't be stamped; a
