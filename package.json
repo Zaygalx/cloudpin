@@ -1,6 +1,6 @@
 {
   "name": "cloudpin",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A seatbelt for your cloud CLIs: stops you, or your AI agent, from running commands on the wrong account.",
   "mcpName": "io.github.paureis/cloudpin",
   "type": "module",

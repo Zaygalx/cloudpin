@@ -8,6 +8,39 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-29
+
+Fixes agent-hook gaps where a command could run on the wrong account without being checked (1.2.0 and earlier have
+them). Please upgrade.
+
+### Fixed
+
+- Agent hooks: a heredoc inside `$( )`, as in `git commit -m "$(cat <<'EOF' ... it's ... EOF)" && az ...`, no
+  longer hides the calls after it. Carriage returns are dropped as Git Bash does, `(( ))` and `$(( ))` are read as
+  arithmetic, and `$'...'` is decoded ([#161](https://github.com/paureis/cloudpin/issues/161)).
+- Agent hooks: an account flag whose value is only known when the command runs (`--subscription $(cat f)`,
+  `--context="$X"`, an unknown `$VAR` or `"$@"`) gives "can't tell" instead of being read as empty. A variable set
+  earlier on the same line is substituted, which also ends a false block. An unquoted `$( )` counts as one word that is
+  not a flag ([#160](https://github.com/paureis/cloudpin/issues/160)).
+- Agent hooks read PowerShell commands with PowerShell's rules: Claude Code's and Copilot's PowerShell tools, and on
+  Windows the agents that don't name their shell (Codex, Gemini CLI, Cursor, Antigravity) are read both ways, and every
+  call either reading finds is checked. Each call is also checked as Windows PowerShell 5.1 would pass it. `cloudpin
+  explain --powershell` and `cloudpin_check`'s `shell` argument take the dialect
+  ([#159](https://github.com/paureis/cloudpin/issues/159)).
+- Agent hooks find the call behind wrappers and runners: `env`, `sudo`, `nice`, `timeout`, `exec`, `command`,
+  `xargs`, `watch`, `npx`, `npm exec`, `pnpm`, `yarn`, `bunx`, `cmd /c`, `powershell -Command` and
+  `-EncodedCommand`, `Invoke-Expression` and `Start-Process` ([#162](https://github.com/paureis/cloudpin/issues/162)).
+- gcloud: `--impersonate-service-account` (and its variable and property) is checked as the account the command runs
+  as, the last one in a delegation chain. An access token or token file gives "can't tell" for an account pin; a
+  project pin is still checked ([#165](https://github.com/paureis/cloudpin/issues/165)).
+
+### Changed
+
+- These fixes fail closed, so some lines that ran before now stop as "can't tell": `... | xargs <guarded CLI>`,
+  cmd's `%VAR%`, `^`, `if`, `for` and `start`, an `Invoke-Expression` or `-EncodedCommand` that can't be read, and on
+  Windows a bash variable or `$env:X` in a command from an agent that doesn't name its shell. Run such a command
+  yourself, or write the values out.
+
 ## [1.2.0] - 2026-10-29
 
 Run it everywhere: a GitHub Action, Homebrew and Scoop, the MCP server for every agent, and sharper Vercel and

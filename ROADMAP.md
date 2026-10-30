@@ -56,6 +56,12 @@ An idea gets a version when work on it starts.
 
 ## Shipped
 
+- **1.2.1** (2026-10-29): must-fix patch for agent-hook gaps found in a parser audit: heredocs inside `$( )`
+  ([#161](https://github.com/paureis/cloudpin/issues/161)), run-time values
+  ([#160](https://github.com/paureis/cloudpin/issues/160)), PowerShell commands
+  ([#159](https://github.com/paureis/cloudpin/issues/159)), wrappers and runners
+  ([#162](https://github.com/paureis/cloudpin/issues/162)), and gcloud impersonation
+  ([#165](https://github.com/paureis/cloudpin/issues/165)).
 - **1.2.0** (2026-10-29): run it everywhere. The GitHub Action ([#10](https://github.com/paureis/cloudpin/issues/10)),
   Homebrew and Scoop ([#16](https://github.com/paureis/cloudpin/issues/16),
   [#17](https://github.com/paureis/cloudpin/issues/17)), upgrade advice per package manager
