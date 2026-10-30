@@ -255,13 +255,18 @@ function scan(input: string, from: number, closer: string): Scanned {
       flush();
       i = nested(i + 1, ")");
       mark(0, true);
+      // `(Get-Command az).Source`: a member or an index of the result is part of the same word (#162).
+      if (/^(\.[A-Za-z_]|\[)/.test(input.slice(i, i + 2))) continue;
       flush();
       endKeyword();
     } else if (c === "{") {
       flush();
       const argument = commandSeen;
+      const start = i;
       i = nested(i + 1, "}");
       if (argument) {
+        // Its text, so a runner that gets the block (powershell -Command, iex) knows it was read here (#162).
+        word = input.slice(start, i);
         mark(0, true);
         flush();
       }
@@ -317,7 +322,7 @@ export function windowsPowerShellArgv(args: readonly string[]): string[] {
  * it is a quote), and 2n backslashes before a quote are n, 2n+1 are n and a quote. With `percent`, %NAME%
  * (expanded before the CLI sees it, so it may hold several words) is marked as known only when it runs.
  */
-function splitCommandLine(text: string, percent: boolean): (Token & { kind: "word" })[] {
+export function splitCommandLine(text: string, percent: boolean): (Token & { kind: "word" })[] {
   const out: (Token & { kind: "word" })[] = [];
   let word = "";
   let has = false;

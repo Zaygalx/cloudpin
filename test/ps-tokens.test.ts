@@ -75,8 +75,7 @@ describe("PowerShell: the audit's repro lines (#159)", () => {
     expect(call?.env).toEqual({ AZURE_CONFIG_DIR: "zzdir" });
   });
 
-  // Not this issue: environment state, the working folder and other runners are #162 and #163.
-  it.todo("cmd /c, Start-Process, Invoke-Expression, powershell -EncodedCommand / positional script (#162)");
+  // Not this issue: environment state and the working folder are #163; other runners are in shellwords-runners.test.ts (#162).
   it.todo("${env:X} = ..., Set-Item env:, [Environment]::SetEnvironmentVariable, Remove-Item Env:, $env: set in if / & { } (#163)");
   it.todo("Set-Location, sl, Push-Location, cd -Path (#163)");
 });

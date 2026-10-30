@@ -1,6 +1,6 @@
 import type { Expansion } from "./shell-tokens.js";
-import { UNKNOWN_VALUE } from "./types.js";
-import type { Variables } from "./word-expansion.js";
+import { DYNAMIC_WORDS, UNKNOWN_VALUE } from "./types.js";
+import { substitute, type Variables } from "./word-expansion.js";
 
 /** The words of one statement, as `shellwords.ts` keeps them. */
 export type Words = [words: string[], quoted: boolean[], dynamic: boolean[], expansions: (Expansion[] | undefined)[]];
@@ -78,4 +78,15 @@ export function psAssignment([words, quoted, dynamic, expansions]: Words): { nam
   const [w, q] = value;
   const literal = operator === "=" && w.length === 1 && (q[0] === true || NUMBER.test(w[0]!)) && !w[0]!.includes(",");
   return { name: m[1]!.toLowerCase(), literal, value };
+}
+
+/**
+ * What a pipeline element passes to the next command's input (#162): its literal strings and variables the
+ * line set (`'az ...' | iex`, `$c | iex`), or else one value cloudpin can't read (a command's output).
+ */
+export function pipedValues([words, quoted, dynamic, expansions]: Words, state: PsState): string[] {
+  const vars = psVariables(state);
+  const values = words.map((w, k) => (expansions[k] ? substitute(w, expansions[k]!, vars) : quoted[k] ? w : undefined));
+  const literal = values.length > 0 && words.every((_, k) => quoted[k] || dynamic[k]) && !values.includes(undefined);
+  return literal ? (values as string[]) : [DYNAMIC_WORDS];
 }

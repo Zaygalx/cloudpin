@@ -40,6 +40,9 @@ Run the type-check and the tests as separate commands and read each exit code.
 | `src/shell-tokens.ts` | The tokenizer behind it: words, operators, `$( )` and heredocs, read as bash reads them |
 | `src/ps-tokens.ts` | The same tokens from a PowerShell line, read as PowerShell reads it, and the arguments Windows PowerShell 5.1 hands a CLI |
 | `src/ps-words.ts` | PowerShell variables, assignments and keywords, for `shellwords.ts` |
+| `src/wrappers.ts` | Commands that run the command after their own flags (env, sudo, nice, timeout, xargs, npx, pnpm...), each with its flag table from the tool's docs |
+| `src/runners.ts` | Commands that run a line or a list they are given: bash -c, watch, cmd /c, powershell and pwsh, Invoke-Expression, Start-Process |
+| `src/cmd-line.ts` | The commands cmd.exe runs from a `cmd /c` line |
 | `src/redirections.ts` | Shell redirections (`2>&1`, `>out`, `*>`), which shellwords drops from a call's arguments |
 | `src/hooks/agents.ts` | One adapter per AI agent's hook format |
 | `src/cache.ts` | The identity cache |

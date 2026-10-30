@@ -7,7 +7,8 @@ const CANT_TELL = "so cloudpin can't tell which account this command would use";
  * undefined when none could pick it. Each reason names a flag, never a value:
  * - the value of one of `targetFlags` (`--context <x>`, `--context=<x>`, `-itn <x>`);
  * - a flag name completed at run time (`"--sub$(...)"`);
- * - an unquoted variable, or "$@", that bash may split into several words, flags included.
+ * - an unquoted variable, or "$@", that bash may split into several words, flags included; also the words
+ *   xargs adds, and a call behind a wrapper flag or a command string cloudpin can't read (#162).
  * A `$(...)` or quoted value anywhere else is a value cloudpin doesn't need. Words after "--" are operands.
  */
 export function dynamicTarget(args: readonly string[], targetFlags: readonly string[]): { problem: string; fix: string } | undefined {
@@ -20,8 +21,8 @@ export function dynamicTarget(args: readonly string[], targetFlags: readonly str
     if (arg === "--") break;
     if (arg.includes(DYNAMIC_WORDS)) {
       return {
-        problem: `the command has an unquoted variable not set earlier in the line, or "$@", which could expand to flags that pick the account, ${CANT_TELL}`,
-        fix: "quote it if it is one value, give it a literal value, or run the command yourself",
+        problem: `the command has words only known when it runs (an unquoted variable not set earlier in the line, "$@", input xargs adds, or a wrapper or command string cloudpin can't read), which could be flags that pick the account, ${CANT_TELL}`,
+        fix: "quote a variable if it is one value, give it a literal value, write the call out, or run the command yourself",
       };
     }
     const at = arg.indexOf(DYNAMIC_WORD);

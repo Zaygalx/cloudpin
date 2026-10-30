@@ -2,10 +2,12 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { commandName } from "./guard.js";
 import { tokenizePowerShell, windowsPowerShellArgv } from "./ps-tokens.js";
-import { psAssignment, psVariables } from "./ps-words.js";
+import { pipedValues, psAssignment, psVariables } from "./ps-words.js";
+import { type Arg, type Run, runner } from "./runners.js";
 import { type Expansion, tokenize } from "./shell-tokens.js";
 import { DYNAMIC_WORD, DYNAMIC_WORDS, UNKNOWN_VALUE } from "./types.js";
 import { expandWord, isDynamic, substitute, type Variables } from "./word-expansion.js";
+import { forCall, unwrap, wrappedWords } from "./wrappers.js";
 
 export interface Invocation {
   /** Executable as written, e.g. "gh" or "/usr/bin/gh". */
@@ -22,6 +24,8 @@ export interface Invocation {
   unset?: string[];
   /** Folder the call runs in, when a `cd` earlier in the line changed it. */
   cwd?: string;
+  /** The call starts with an empty environment (`env -i`, `exec -c`): only `env` reaches the CLI (#162). */
+  clearEnv?: boolean;
 }
 
 export { UNKNOWN_VALUE };
@@ -30,29 +34,10 @@ export { UNKNOWN_VALUE };
 export type Dialect = "bash" | "powershell";
 
 const ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s;
-// Words that run the command after them (shell keywords, prefixes, runners).
-const PASS_THROUGH = new Set([
-  "sudo", "command", "time", "nohup", "exec", "builtin", "nice",
-  "npx", "bunx", "{", "!", "if", "then", "else", "elif", "while", "until", "do",
-]);
-// Runners whose second word is a subcommand, e.g. `pnpm dlx vercel`.
-const RUNNER_SUBCOMMANDS: Record<string, string[]> = {
-  pnpm: ["dlx", "exec"],
-  yarn: ["dlx", "exec"],
-  npm: ["exec", "x"],
-  bun: ["x"],
-};
-// Wrappers with flags that take a value, and how many positional words
-// (e.g. timeout's duration) come before the wrapped command.
-const VALUE_WRAPPERS: Record<string, { valueFlags: string[]; positionals: number }> = {
-  timeout: { valueFlags: ["-s", "-k", "--signal", "--kill-after"], positionals: 1 },
-  xargs: { valueFlags: ["-n", "-I", "-i", "-P", "-L", "-l", "-d", "-a", "-E", "-e", "-s"], positionals: 0 },
-  watch: { valueFlags: ["-n", "--interval"], positionals: 0 },
-};
+// Shell keywords that run the command after them; wrappers and runners are in wrappers.ts and runners.ts.
+const KEYWORDS = new Set(["{", "!", "if", "then", "else", "elif", "while", "until", "do"]);
 // find options whose arguments, up to ";" or "+", are a command it runs.
 const FIND_EXEC = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
-const SHELLS = new Set(["bash", "sh", "zsh", "dash"]);
-const POWERSHELLS = new Set(["pwsh", "powershell"]);
 
 interface State {
   /** Working directory after any `cd` seen so far; undefined until one is. */
@@ -74,6 +59,9 @@ interface State {
   dialect: Dialect;
   /** PowerShell variables set from something other than one literal, which may be several words (#159). */
   lists: Set<string>;
+  /** What a wrapper did to the environment of the call it runs (#162): `env -i`, `env -u NAME`. */
+  clearEnv?: boolean;
+  callUnset?: string[];
 }
 
 /** The variables the line set, as word expansion reads them (#160). */
@@ -188,28 +176,33 @@ function analyse(
       return;
     }
     const assignment = ASSIGNMENT.exec(word);
-    const name = commandName(word);
-    const wrapper = VALUE_WRAPPERS[name];
     if (assignment) {
       env[assignment[1]!] = valueOf(i, assignment);
       i++;
-    } else if (wrapper) {
-      i++;
-      while (words[i]?.startsWith("-")) {
-        const flag = words[i]!;
-        i += wrapper.valueFlags.includes(flag) ? 2 : 1;
-      }
-      i += wrapper.positionals;
-    } else if (name === "env" || PASS_THROUGH.has(name)) {
-      i++;
-      // Skip the wrapper's own flags (sudo -u root, npx --yes, env -i).
-      while (words[i]?.startsWith("-")) i += words[i] === "-u" ? 2 : 1;
-    } else if (RUNNER_SUBCOMMANDS[name]?.includes(words[i + 1] ?? "")) {
-      i += 2;
-      while (words[i]?.startsWith("-")) i++;
-    } else {
-      break;
+      continue;
     }
+    if (KEYWORDS.has(word) && !quoted[i]) {
+      i++;
+      continue;
+    }
+    // A wrapper (env, sudo, nice, xargs, npx...) runs the command after its own flags (#162).
+    const step = dynamic[i] ? undefined : unwrap(commandName(word), words, i, dynamic);
+    if (!step) break;
+    if (step.none) return;
+    const split = step.split === undefined ? [] : tokenize(step.split);
+    if (step.unknown || split.some((t) => t.kind !== "word" || t.dynamic)) {
+      cantTell(words.slice(i).join(" "), dynamic.slice(i).some(Boolean), out, env, state);
+      return;
+    }
+    if (step.script !== undefined) {
+      runLine(step.script, "bash", out, env, state);
+      return;
+    }
+    if (step.clearEnv) for (const k of Object.keys(env)) delete env[k];
+    for (const k of step.unset ?? []) delete env[k];
+    state = forCall(state, step, child);
+    [words, quoted, dynamic, expansions] = wrappedWords([words, quoted, dynamic, expansions], step, split.map((t) => (t.kind === "word" ? t.value : "")));
+    i = step.next;
   }
   let bin = words[i]!;
   let args = words.slice(i + 1);
@@ -282,28 +275,34 @@ function analyse(
     }
     return;
   }
+  // The arguments with the line's variables, for a command that runs them (#162).
+  const runArgs = (): Arg[] =>
+    args.map((raw, k) => {
+      const at = from === -1 ? -1 : from + k;
+      const x = expansions[at];
+      return { raw, quoted: quoted[at] ?? false, dynamic: dynamic[at] ?? isDynamic(raw), value: isDynamic(raw) ? undefined : x ? substitute(raw, x, vars) : raw };
+    });
+  const run: Run | undefined = name === "eval" || name === "find" ? undefined : runner(name, runArgs(), state.dialect);
   if (name === "eval") {
     // eval joins its arguments and runs them as a command line, in this shell.
-    if (!isDynamic(args.join(" "))) collect(args.join(" "), out, state);
+    if (isDynamic(args.join(" "))) cantTell(args.join(" "), true, out, env, state);
+    else collect(args.join(" "), out, state);
   } else if (name === "find") {
     for (let k = 0; k < args.length; k++) {
       if (!FIND_EXEC.has(args[k]!)) continue;
       const end = args.findIndex((a, j) => j > k && (a === ";" || a === "+"));
       analyse(...part(k + 1, end === -1 ? undefined : end));
     }
-  } else if (SHELLS.has(name) || POWERSHELLS.has(name)) {
-    const flag = args.findIndex((a) =>
-      SHELLS.has(name) ? /^-[a-z]*c$/.test(a) : /^-(c|command)$/i.test(a),
-    );
-    const script = flag === -1 ? undefined : args[flag + 1];
-    // The script is read with the rules of the shell that runs it (#159).
-    const inner = (): State => ({ ...child(state), dialect: POWERSHELLS.has(name) ? "powershell" : "bash" });
-    if (script !== undefined && script !== "-") {
-      if (!isDynamic(script)) collect(script, out, inner());
+  } else if (run) {
+    // Each line is read with the rules of the shell that runs it (#159); a shell without a script reads
+    // its commands from standard input: `bash <<EOF`, `pwsh -Command - <<EOF`, `'...' | iex`.
+    for (const { text, dialect } of [...(run.lines ?? []), ...(run.stdin ? stdin.map((text) => ({ text, dialect: run.stdin! })) : [])]) {
+      runLine(text, dialect, out, env, state);
     }
-    // A shell without a script reads its commands from standard input:
-    // `bash <<EOF`, `bash <<< "..."`, `pwsh -Command - <<EOF`.
-    else for (const body of stdin) collect(body, out, inner());
+    const started = forCall(state, run.cwd === undefined ? {} : { cwd: run.cwd }, child);
+    for (const argv of run.argvs ?? []) analyse(argv, [], out, { ...child(started), dialect: "bash" });
+    if (run.from !== undefined) analyse(...part(run.from));
+    if (run.unknown) cantTell(args.join(" "), runArgs().some((a) => a.value === undefined), out, env, state);
   } else if (args.includes("{")) {
     // A PowerShell script block, e.g. `ForEach-Object { gh pr view $_ }`: its
     // first statement shares this segment (later ones are segments of their own).
@@ -316,16 +315,31 @@ function analyse(
 function invocation(bin: string, args: string[], env: Record<string, string>, state: State): Invocation {
   const inv: Invocation = { bin, args, env: { ...state.exported, ...env } };
   if (Object.keys(state.plain).length > 0) inv.ifExported = { ...state.plain };
-  if (state.unset.size > 0) inv.unset = [...state.unset];
+  const unset = [...state.unset, ...(state.callUnset ?? [])];
+  if (unset.length > 0) inv.unset = unset;
   if (state.cwd !== undefined) inv.cwd = state.cwd;
+  if (state.clearEnv) inv.clearEnv = true;
   return inv;
 }
 
-/** Guarded CLI names that appear as whole words anywhere in the line. */
-function namedClis(state: State): string[] {
+/** Guarded CLI names that appear as whole words in `text`, the whole line by default. */
+function namedClis(state: State, text = state.line): string[] {
   return [...state.guarded].filter((name) =>
-    new RegExp(`(^|[^A-Za-z0-9_.-])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9_.-]|$)`).test(state.line),
+    new RegExp(`(^|[^A-Za-z0-9_.-])${name.replace(/[.*+?^${}()|[\]\\]/g, (c) => `\\${c}`)}([^A-Za-z0-9_.-]|$)`).test(text),
   );
+}
+
+/** Something cloudpin can't read decides what runs (#162): each guarded CLI named in `text` (or the line) can't tell. */
+function cantTell(text: string, wholeLine: boolean, out: Invocation[], env: Record<string, string>, state: State): void {
+  for (const name of new Set([...namedClis(state, text), ...(wholeLine ? namedClis(state) : [])])) {
+    out.push(invocation(name, [DYNAMIC_WORDS], env, state));
+  }
+}
+
+/** A line a runner runs, read with its shell's rules, in a child shell. */
+function runLine(text: string, dialect: Dialect, out: Invocation[], env: Record<string, string>, state: State): void {
+  if (isDynamic(text)) cantTell(text, true, out, env, state);
+  else collect(text, out, { ...child(state), dialect });
 }
 
 function collect(input: string, out: Invocation[], state: State): void {
@@ -355,7 +369,11 @@ function collect(input: string, out: Invocation[], state: State): void {
     // Runs where it appears, in a child shell, so a `cd` inside does not leak.
     else if (token.kind === "subst") collect(token.inner, out, child(state));
     else {
+      // PowerShell pipes values: the next command reads a literal string as its input (`'az ...' | iex`), a
+      // variable's known value, and anything else as input it can't read (#162).
+      const piped = token.op === "|" && state.dialect === "powershell" ? pipedValues([segment, quoted, dynamic, expansions], state) : [];
       end();
+      stdin = piped;
       if (token.op === "(") saved.push(child(state));
       else if (token.op === ")" && saved.length > 0) {
         const outer = saved.pop()!;
