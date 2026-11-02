@@ -8,6 +8,15 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 
 ## [Unreleased]
 
+### Fixed
+
+- Wrangler auth profiles (#103): a command run with `--profile`, or in a folder bound by `wrangler auth activate`,
+  is checked against that profile's login and its own account cache, not the default one. When nothing else names
+  the account and Wrangler can't be asked about the profile (a `--profile` the folder isn't bound to, with no API
+  token or key in the environment or the project's `.env` files), it stops the command. `cloudpin explain` names the
+  profile and why. Profiles are read from Wrangler's config folder, which an `XDG_CONFIG_HOME` or (on Windows)
+  `APPDATA` set in `.env` moves.
+
 ## [1.2.1] - 2026-10-29
 
 Fixes agent-hook gaps where a command could run on the wrong account without being checked (1.2.0 and earlier have

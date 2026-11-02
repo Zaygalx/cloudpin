@@ -31,8 +31,11 @@ function folder(files: Record<string, string> = {}) {
   return root;
 }
 
+// An empty home folder, so no test reads the real Wrangler profiles (#103).
+const noProfiles = tempDir("cloudpin-wrangler-home-");
+
 const resolve = (args: string[], cwd: string, env: NodeJS.ProcessEnv = {}, exec: Exec = fake().exec) =>
-  cloudflare.resolve({ args, env, cwd, bin: "wrangler" }, exec);
+  cloudflare.resolve({ args, env: { HOME: noProfiles, USERPROFILE: noProfiles, ...env }, cwd, bin: "wrangler" }, exec);
 
 describe("wrangler.toml account_id", () => {
   it("reads the top-level value and each [env.NAME] value", () => {
@@ -226,7 +229,7 @@ describe("cloudflare.resolve: the .env files Wrangler loads (#116)", () => {
     const root = folder({ ".env": "CLOUDFLARE_API_TOKEN=token-from-dotenv\n" });
     const { exec, envs } = recording();
     await resolve(["deploy"], root, { PATH: "/bin" }, exec);
-    expect(envs).toEqual([{ PATH: "/bin", CLOUDFLARE_API_TOKEN: "token-from-dotenv" }]);
+    expect(envs).toEqual([{ HOME: noProfiles, USERPROFILE: noProfiles, PATH: "/bin", CLOUDFLARE_API_TOKEN: "token-from-dotenv" }]);
     const bad = recording({ code: 1, stdout: "", stderr: "Authentication error [code: 10000]" });
     const res = await resolve(["deploy"], root, {}, bad.exec);
     expect(res).toMatchObject({ kind: "error", message: expect.stringMatching(/CLOUDFLARE_API_TOKEN is set in \.env/) });
@@ -247,9 +250,10 @@ describe("cloudflare.resolve: the .env files Wrangler loads (#116)", () => {
   });
 
   it("passes the command's own environment, the same object, when there is no .env file", async () => {
-    const env = { PATH: "/bin", CLOUDFLARE_API_TOKEN: "t" };
+    const env = { HOME: noProfiles, USERPROFILE: noProfiles, PATH: "/bin", CLOUDFLARE_API_TOKEN: "t" };
     const { exec, envs } = recording();
-    await resolve(["deploy"], folder({ "wrangler.toml": 'name = "w"\n' }), env, exec);
+    // Not the resolve() helper, which copies env to add the empty home folder.
+    await cloudflare.resolve({ args: ["deploy"], env, cwd: folder({ "wrangler.toml": 'name = "w"\n' }), bin: "wrangler" }, exec);
     expect(envs).toHaveLength(1);
     expect(envs[0]).toBe(env);
   });
