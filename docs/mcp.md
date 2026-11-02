@@ -1,14 +1,15 @@
 # cloudpin's MCP server
 
 `cloudpin mcp` is an MCP server (stdio) for any agent that supports MCP. The
-[Claude Code plugin](../README.md#claude-code-plugin) starts it for you. It has two tools:
+[Claude Code plugin](../README.md#claude-code-plugin) starts it for you. It has three tools:
 
 | Tool | Answers |
 |---|---|
 | `cloudpin_status` | which account each CLI is using here, what the project pins, which environment applies, which hooks are installed (the same as `cloudpin status --json`) |
 | `cloudpin_check` | would cloudpin allow this command line, as an agent's: each call, the account it would use and why, and the verdict with its reason and fix (the same as `cloudpin explain --agent --json`). The line is read as bash; pass `shell: "powershell"` for a PowerShell command (`--powershell` for `explain`) |
+| `cloudpin_doctor` | why cloudpin may not be guarding here: cloudpin on PATH, shell wrappers, agent hooks missing or out of date, on Windows the PowerShell execution policy and PATH, the pin file and each CLI's account, each with its fix (the same as `cloudpin doctor --json`, account IDs shortened; it skips the identity cache check, which writes a file, and says so) |
 
-Neither tool runs, switches or changes anything, by design: an agent that could switch accounts could switch to the
+No tool runs, switches or changes anything, by design: an agent that could switch accounts could switch to the
 wrong one, and only you know which account the work is for.
 
 When an agent connects, the server also hands it a few lines of instructions: check first, and

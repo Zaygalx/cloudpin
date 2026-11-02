@@ -6,6 +6,7 @@ import { AGENTS, runHook, type AgentHook } from "../src/hooks/agents.js";
 import { cloudpinTools } from "../src/mcp-tools.js";
 import { azure } from "../src/providers/azure.js";
 import type { Exec } from "../src/types.js";
+import { fakeDoctorHost } from "./fake-doctor-host.js";
 import { tempDir } from "./tmp.js";
 
 // #159 through the agent hooks, with the real azure provider and a fake Exec: a PowerShell command is read
@@ -131,7 +132,7 @@ describe("explain and cloudpin_check take the shell (#159)", () => {
   });
 
   it("cloudpin_check accepts shell: powershell, and rejects any other value", async () => {
-    const tools = cloudpinTools(deps, { cwd, env: {}, read: () => null, isDir: () => true });
+    const tools = cloudpinTools(deps, { cwd, env: {}, read: () => null, isDir: () => true, doctor: fakeDoctorHost });
     const check = tools.find((t) => t.name === "cloudpin_check")!;
     expect(JSON.stringify(check.inputSchema)).toContain('"shell"');
     const result = (await check.call({ command: line, shell: "powershell" })) as { calls: { verdict: string }[] };

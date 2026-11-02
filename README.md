@@ -329,9 +329,10 @@ The plugin replaces `cloudpin install-hook claude`: with the plugin enabled, `in
 
 ### MCP server
 
-`cloudpin mcp` is an MCP server (stdio) for any agent; the Claude Code plugin starts it for you. Its two tools,
-`cloudpin_status` and `cloudpin_check`, report the accounts in use and if a command would be allowed. Neither runs,
-switches or changes anything: an agent that could switch accounts could switch to the wrong one.
+`cloudpin mcp` is an MCP server (stdio) for any agent; the Claude Code plugin starts it for you. Its three tools,
+`cloudpin_status`, `cloudpin_check` and `cloudpin_doctor`, report the accounts in use, if a command would be allowed,
+and why cloudpin may not be guarding. None runs, switches or changes anything: an agent that could switch accounts
+could switch to the wrong one.
 [docs/mcp.md](docs/mcp.md) adds it to Codex, Cursor, VS Code and more. It gives advice, not enforcement: where the
 agent has a hook, install that too.
 

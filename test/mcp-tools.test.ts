@@ -7,6 +7,7 @@ import { hookFile, installedHooks, planInstall } from "../src/install.js";
 import { CLOUDPIN_INSTRUCTIONS, cloudpinHandler, cloudpinTools } from "../src/mcp-tools.js";
 import { collectStatus } from "../src/status.js";
 import type { ProviderDef, Resolution } from "../src/types.js";
+import { fakeDoctorHost } from "./fake-doctor-host.js";
 
 const ROOT = resolve("/work/app");
 const HOME = resolve("/home/me");
@@ -36,6 +37,7 @@ const ctx = {
   env: { HOME } as NodeJS.ProcessEnv,
   read: (p: string) => files[p] ?? null,
   isDir: (p: string) => p.startsWith(resolve("/work")) && !p.endsWith(".yml"),
+  doctor: fakeDoctorHost,
 };
 const tools = cloudpinTools(deps, ctx);
 const tool = (name: string) => tools.find((t) => t.name === name)!;
@@ -98,13 +100,13 @@ describe("server instructions", () => {
     expect(head).toMatch(/never runs or switches anything/i);
   });
 
-  it("are what `cloudpin mcp`'s handler sends at initialize, with both tools", async () => {
+  it("are what `cloudpin mcp`'s handler sends at initialize, with its tools", async () => {
     const handle = cloudpinHandler(deps, ctx, "9.9.9");
     const init = JSON.parse((await handle(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25" } })))!);
     expect(init.result.instructions).toBe(CLOUDPIN_INSTRUCTIONS);
     expect(init.result.serverInfo).toEqual({ name: "cloudpin", version: "9.9.9" });
     const list = JSON.parse((await handle(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" })))!);
-    expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual(["cloudpin_status", "cloudpin_check"]);
+    expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual(["cloudpin_status", "cloudpin_check", "cloudpin_doctor"]);
   });
 
   it("name every CLI the tools describe, as the skill does", () => {

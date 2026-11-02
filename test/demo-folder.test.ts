@@ -18,6 +18,7 @@ import { cloudpinTools } from "../src/mcp-tools.js";
 import { providers } from "../src/providers/index.js";
 import type { Exec } from "../src/types.js";
 import { useCommand } from "../src/use.js";
+import { fakeDoctorHost } from "./fake-doctor-host.js";
 import { tempDir } from "./tmp.js";
 
 const DEV = "demo-dev";
@@ -160,7 +161,7 @@ describe("the demo, run against the folder (gh faked)", () => {
 
   it("shot 3: cloudpin_check blocks on production, naming both logins and the fix", async () => {
     const { dir, env, exec } = await makeFolder();
-    const [, check] = cloudpinTools(deps(exec), { cwd: dir, env, read: () => null, isDir: () => true });
+    const [, check] = cloudpinTools(deps(exec), { cwd: dir, env, read: () => null, isDir: () => true, doctor: fakeDoctorHost });
     const res = (await check!.call({ command: "gh repo list --visibility public --limit 5" })) as {
       calls: { verdict: string; reason?: string }[];
     };

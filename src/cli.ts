@@ -8,7 +8,7 @@ import { checkExitCode, formatCheckText, parseCheckArgs, runCheck } from "./chec
 import { doctorJson, formatDoctor, runDoctor } from "./doctor.js";
 import { explain, formatExplain } from "./explain.js";
 import { serve } from "./mcp.js";
-import { cloudpinHandler } from "./mcp-tools.js";
+import { cloudpinHandler, type DoctorHost } from "./mcp-tools.js";
 import { confirmProtected } from "./confirm.js";
 import { CONFIG_FILE, ConfigError, findConfig } from "./config.js";
 import { realExec, runInherited } from "./exec.js";
@@ -27,7 +27,7 @@ import {
   windowsRoot,
 } from "./install.js";
 import { runningInstallMethod } from "./install-method.js";
-import { cacheDir, findOnPath, isExecutableFile } from "./paths.js";
+import { cacheDir, findOnPath, isExecutableFile, probeWritable } from "./paths.js";
 import { shellInit } from "./shell-init.js";
 import { buildStatus, collectStatus } from "./status.js";
 import { checksForUpdates, fetchLatest, refreshIfStale, savedNotice, updateCheckAllowed } from "./update.js";
@@ -52,7 +52,8 @@ Usage:
                               What cloudpin would decide for a command, and why, without running it
                               (one quoted argument is read as a full shell line, bash unless --powershell;
                               --agent: as an agent hook)
-  cloudpin mcp                Read-only MCP server for agents (stdio): cloudpin_status, cloudpin_check
+  cloudpin mcp                Read-only MCP server for agents (stdio): cloudpin_status, cloudpin_check,
+                              cloudpin_doctor
   cloudpin doctor [--json]    Check the whole setup (PATH, shell, hooks, pins, CLIs) and say what to fix
                               (--json is safe to paste in a bug report)
   cloudpin use [<env> | --clear]
@@ -165,18 +166,17 @@ const version =() => (createRequire(import.meta.url)("../package.json") as { ver
 /** How this cloudpin was installed (an InstallMethod: npm, brew, scoop or a package manager), from the running script's path, real and as run. */
 const installedWith = runningInstallMethod;
 
-/** True if cloudpin can create and remove a file in `dir` (its own cache folder). */
-function writable(dir: string): boolean {
-  const probe = join(dir, `.cloudpin-doctor-${process.pid}`);
-  try {
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    writeFileSync(probe, "");
-    rmSync(probe);
-    return true;
-  } catch {
-    return false;
-  }
-}
+/** What doctor learns about this cloudpin and machine, for `cloudpin doctor` and the MCP tool alike. */
+const doctorHost = (): DoctorHost => ({
+  platform: process.platform,
+  version: version(),
+  self: process.argv[1] ?? "",
+  install: installedWith(),
+  realpath: (p: string) => realpathSync(p),
+  node: process.versions.node,
+  onPath: (name: string) => onPath(name, process.env),
+  latest: () => fetchLatest(fetch, 3000),
+});
 
 /**
  * `explain [--json] [--agent] [--powershell] [--] <cmd...>`: one argument is a full shell line,
@@ -203,21 +203,8 @@ async function explainCommand(argv: string[]): Promise<number> {
 }
 
 async function doctor(flags: string[]): Promise<number> {
-  const d = {
-    guard: deps,
-    env: process.env,
-    cwd: process.cwd(),
-    platform: process.platform,
-    version: version(),
-    self: process.argv[1] ?? "",
-    install: installedWith(),
-    realpath: (p: string) => realpathSync(p),
-    node: process.versions.node,
-    read: readOrNull,
-    writable,
-    onPath: (name: string) => onPath(name, process.env),
-    latest: () => fetchLatest(fetch, 3000),
-  };
+  // The terminal doctor probes the cache folder by writing to it; the MCP tool never does (src/mcp-tools.ts).
+  const d = { guard: deps, env: process.env, cwd: process.cwd(), read: readOrNull, writable: probeWritable, ...doctorHost() };
   const checks = await runDoctor(d);
   if (flags.includes("--json")) console.log(JSON.stringify(doctorJson(checks, d), null, 2));
   else {
@@ -367,7 +354,8 @@ export async function main(argv: string[]): Promise<number> {
       return explainCommand(rest);
     case "mcp": {
       // Fresh answers (no identity cache), like check and explain. stdout carries only JSON-RPC lines.
-      const handler = cloudpinHandler(deps, { cwd: process.cwd(), env: process.env, read: readOrNull, isDir }, version());
+      const ctx = { cwd: process.cwd(), env: process.env, read: readOrNull, isDir, doctor: doctorHost() };
+      const handler = cloudpinHandler(deps, ctx, version());
       await serve(handler, process.stdin, process.stdout);
       return 0;
     }

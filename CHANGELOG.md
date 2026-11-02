@@ -8,6 +8,13 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 
 ## [Unreleased]
 
+### Added
+
+- MCP: a third read-only tool, `cloudpin_doctor` (#112): the same report as `cloudpin doctor --json` (cloudpin on
+  PATH, shell wrappers, agent hooks, on Windows the PowerShell execution policy, the pin file and each CLI's account,
+  each with its fix), so an agent can tell you why cloudpin isn't guarding. Account IDs are shortened, and it skips
+  the identity cache check, which writes a file.
+
 ### Fixed
 
 - Wrangler auth profiles (#103): a command run with `--profile`, or in a folder bound by `wrangler auth activate`,
