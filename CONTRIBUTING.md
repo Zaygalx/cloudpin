@@ -67,7 +67,8 @@ environment variables count. When it can't tell, it returns an error, and cloudp
 reason. `cacheInputs` must list every variable and file that can change the answer of a CLI call that `resolve` makes,
 and its `env` every variable that can change `resolve`'s own answer: when a command line sets one of those from
 something cloudpin can't read in advance (`$(...)`), the command is stopped. On Windows, `resolve` gets every
-variable name in upper case, as the CLIs read them there.
+variable name in upper case, as the CLIs read them there. Both get the platform the command runs on (`platform` in
+`resolve`'s context, `cacheInputs`' second argument): read it there, never `process.platform`, so tests can set it.
 
 ## Pull requests
 

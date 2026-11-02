@@ -21,6 +21,8 @@ export interface CommandContext {
   cwd: string;
   /** The command name, e.g. "kubectl" or "helm", for providers that guard several CLIs. */
   bin?: string;
+  /** The platform the command runs on; providers read it, never process.platform, so tests can set it (#136). */
+  platform?: NodeJS.Platform;
 }
 
 /** The identity a command will act as, keyed like the provider's pin section. */
@@ -63,8 +65,8 @@ export interface ProviderDef<P extends Provider = Provider> {
   switchHint(pin: NonNullable<Pins[P]>): string;
   /** Command that shows the CLI's login state, suggested when resolving fails. */
   statusCommand: string;
-  /** Environment variables and files that decide the identity (cache invalidation). */
-  cacheInputs(env: NodeJS.ProcessEnv): CacheInputs;
+  /** Environment variables and files that decide the identity (cache invalidation), on `platform` (default: this process's). */
+  cacheInputs(env: NodeJS.ProcessEnv, platform?: NodeJS.Platform): CacheInputs;
   /**
    * Every flag `resolve` reads (the ones that pick the account, project, scope, context, ...). A value
    * cloudpin can't read in advance in one of them means it can't tell which account the command uses,

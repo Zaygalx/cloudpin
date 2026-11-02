@@ -185,19 +185,20 @@ export const cloudflare: ProviderDef<"cloudflare"> = {
   // The flags resolve reads (#160).
   targetFlags: ["--cwd", "--config", "-c", "--env", "-e", "--env-file", "--envFile", "--profile"],
 
-  cacheInputs(env) {
+  cacheInputs(env, platform) {
     // Only `wrangler whoami` is cached. Its OAuth logins live in the global
     // Wrangler config folder (~/.wrangler if it exists, else the XDG one):
     // config/<profile>.toml or .enc, and the folder bindings that pick one.
     // WRANGLER_API_ENVIRONMENT renames the default profile's file. XDG_CONFIG_HOME
-    // and APPDATA move the folder, also when a .env file sets them.
+    // and APPDATA move the folder, also when a .env file sets them. The XDG
+    // folder differs per platform (wranglerConfigDirs), so it is `platform`'s (#136).
     return {
       // Every variable that decides the account, not only whoami's credentials:
       // guard blocks when a command line sets one to a value it can't know (#86,
       // #119). DOTENV_KEY picks a .env.vault over .env (wrangler-dotenv.ts). Names
       // whoami ignores can only make its cache miss, never hit wrongly.
       env: [...DOTENV_VARS, "DOTENV_KEY"],
-      ...profileCacheInputs(env),
+      ...profileCacheInputs(env, platform),
     };
   },
 
@@ -214,14 +215,14 @@ export const cloudflare: ProviderDef<"cloudflare"> = {
     return false;
   },
 
-  async resolve({ args, env: commandEnv, cwd }, exec): Promise<Resolution> {
+  async resolve({ args, env: commandEnv, cwd, platform }, exec): Promise<Resolution> {
     if (hasAnyFlag(args, ["--temporary"])) {
       return { kind: "error", message: "deploy --temporary uploads to a temporary preview account, not a pinned one" };
     }
     const start = resolvePath(cwd, flagValue(args, ["--cwd"]) ?? ".");
     // Wrangler adds what its .env files set to its own environment (#116); from
     // here on, env is that environment, and whoami below is asked with it.
-    const dotenv = wranglerDotenv(args, commandEnv, start);
+    const dotenv = wranglerDotenv(args, commandEnv, start, platform);
     if ("error" in dotenv) return { kind: "error", message: dotenv.error };
     const { env } = dotenv;
     const inFile = (name: string) => (dotenv.from[name] ? ` in ${dotenv.from[name]}` : "");
@@ -229,10 +230,10 @@ export const cloudflare: ProviderDef<"cloudflare"> = {
     const configPath = given !== undefined ? resolvePath(start, given) : CONFIG_NAMES.map((n) => findUp(n, start)).find(Boolean);
     const envName = flagValue(args, ["--env", "-e"]) ?? (env.CLOUDFLARE_ENV || undefined);
     // The folder whose binding picks the profile: the --config file's, else the command's.
-    const folder = bindingFolder(start);
+    const folder = bindingFolder(start, platform);
     const lookup = given !== undefined ? dirname(resolvePath(folder, given)) : folder;
     let known: ReturnType<typeof commandProfile> | undefined;
-    const profile = () => (known ??= commandProfile(args, env, lookup));
+    const profile = () => (known ??= commandProfile(args, env, lookup, platform));
 
     if (configPath !== undefined) {
       if (!existsSync(configPath)) return { kind: "error", message: `the Wrangler config file ${basename(configPath)} does not exist` };

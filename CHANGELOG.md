@@ -22,6 +22,10 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 - Windows: variable names are read without regard to case, as Windows and the CLIs do (#119), so a lowercase
   `gh_token`, `aws_profile`, `azure_config_dir` or `cloudflare_account_id` counts. One variable set in two spellings
   to different values stops as "can't tell".
+- Windows: cloudpin's own variables are read without regard to case too (#136): a lowercase `cloudpin_env`,
+  `cloudpin_branch`, `cloudpin_confirm` or `cloudpin_skip` you set counts, and an agent still can't set or unset
+  `CLOUDPIN_ENV` or `CLOUDPIN_BRANCH` in any spelling. The read-only check on a protected environment reads folded
+  names, so a lowercase `aws_config_file` counts there as well.
 
 ## [1.2.1] - 2026-10-29
 

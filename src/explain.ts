@@ -114,7 +114,7 @@ export async function explain(command: string | string[], opts: ExplainOptions, 
     }
     const cwd = call.cwd ?? opts.cwd;
     const trace: Trace = {};
-    const verdict = await guard({ bin: call.bin, args: call.args, env: envFor(opts.env, call, { agent: opts.mode === "agent" }), cwd, mode: opts.mode }, deps, trace);
+    const verdict = await guard({ bin: call.bin, args: call.args, env: envFor(opts.env, call, { agent: opts.mode === "agent", platform: deps.platform }), cwd, mode: opts.mode }, deps, trace);
     const res = trace.resolution;
     out.push({
       argv: [call.bin, ...call.args],
