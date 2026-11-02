@@ -38,6 +38,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   the way each CLI does, in every provider.
 - **Cloudflare account variables** ([#119](https://github.com/paureis/cloudpin/issues/119)): done. An account
   variable whose value cloudpin can't know blocks, and Windows reads variable names without regard to case.
+- **Explain masks credentials** ([#134](https://github.com/paureis/cloudpin/issues/134)): done. `cloudpin explain`
+  and the MCP check tool mask tokens and passwords from the command line.
 - **Windows case gaps** ([#136](https://github.com/paureis/cloudpin/issues/136)): done. cloudpin's own variables
   and the read-only check read names without regard to case (Wrangler's per-platform login folder came with #103).
 

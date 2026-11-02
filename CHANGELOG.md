@@ -15,6 +15,13 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
   each with its fix), so an agent can tell you why cloudpin isn't guarding. Account IDs are shortened, and it skips
   the identity cache check, which writes a file.
 
+### Security
+
+- `cloudpin explain` (text and `--json`) and the MCP `cloudpin_check` tool no longer repeat a token or password from
+  the command line (#134): `--token`, kubectl's `--token` and `--password`, helm's `--kube-token` and the other
+  credential flags are masked, as in cloudpin's own block messages, also inside `cmd /c`, `powershell -Command` and
+  `-EncodedCommand`. The verdict is still worked out from the real values.
+
 ### Fixed
 
 - Wrangler auth profiles (#103): a command run with `--profile`, or in a folder bound by `wrangler auth activate`,

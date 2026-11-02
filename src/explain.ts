@@ -1,4 +1,5 @@
 import type { ActiveEnvironment } from "./config.js";
+import { maskArgv } from "./format.js";
 import { commandName, guard, type GuardDeps, type Trace, type Verdict } from "./guard.js";
 import { AGENTS, type AgentName } from "./hooks/agents.js";
 import { home } from "./paths.js";
@@ -8,6 +9,7 @@ import { describe } from "./status.js";
 import type { Identity } from "./types.js";
 
 export interface ExplainedCall {
+  /** The call's words, credential values masked as `***` in place (#134). */
   argv: string[];
   /** The folder the call runs in (after any `cd` earlier in the line). */
   cwd: string;
@@ -117,7 +119,8 @@ export async function explain(command: string | string[], opts: ExplainOptions, 
     const verdict = await guard({ bin: call.bin, args: call.args, env: envFor(opts.env, call, { agent: opts.mode === "agent", platform: deps.platform }), cwd, mode: opts.mode }, deps, trace);
     const res = trace.resolution;
     out.push({
-      argv: [call.bin, ...call.args],
+      // Masked for every output (text, --json, MCP); the guard above read the real words (#134).
+      argv: maskArgv([call.bin, ...call.args]),
       cwd,
       envNames: Object.keys(call.env),
       cli: trace.provider ?? null,
