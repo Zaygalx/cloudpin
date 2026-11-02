@@ -210,7 +210,8 @@ describe("wranglerDotenv: the environment Wrangler gives itself", () => {
   });
 
   it("covers every variable the identity cache keys on", () => {
-    for (const name of cloudflare.cacheInputs({}).env) expect(DOTENV_VARS).toContain(name);
+    // DOTENV_KEY is read from the process only (dotenv's _dotenvKey), never from a .env file.
+    for (const name of cloudflare.cacheInputs({}).env) if (name !== "DOTENV_KEY") expect(DOTENV_VARS).toContain(name);
     for (const name of ["CLOUDFLARE_ACCOUNT_ID", "CF_ACCOUNT_ID", "CLOUDFLARE_ENV", "WRANGLER_CACHE_DIR"]) expect(DOTENV_VARS).toContain(name);
   });
 });

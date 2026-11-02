@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { commandWords, flagValue, hasAnyFlag, hasBareFlag } from "../args.js";
 import type { ProviderDef, Resolution } from "../types.js";
-import { envFileArgs, wranglerDotenv } from "./wrangler-dotenv.js";
+import { DOTENV_VARS, envFileArgs, wranglerDotenv } from "./wrangler-dotenv.js";
 import { accountCacheFile, bindingFolder, commandProfile, envCredentials, profileCacheInputs, profileNote } from "./wrangler-profiles.js";
 
 // Sources: github.com/cloudflare/workers-sdk (packages/workers-auth/src/core/factory.ts
@@ -192,7 +192,11 @@ export const cloudflare: ProviderDef<"cloudflare"> = {
     // WRANGLER_API_ENVIRONMENT renames the default profile's file. XDG_CONFIG_HOME
     // and APPDATA move the folder, also when a .env file sets them.
     return {
-      env: [...TOKEN_VARS, "CLOUDFLARE_EMAIL", "CF_EMAIL", "CLOUDFLARE_AUTH_USE_KEYRING", "WRANGLER_API_ENVIRONMENT", "XDG_CONFIG_HOME", "APPDATA"],
+      // Every variable that decides the account, not only whoami's credentials:
+      // guard blocks when a command line sets one to a value it can't know (#86,
+      // #119). DOTENV_KEY picks a .env.vault over .env (wrangler-dotenv.ts). Names
+      // whoami ignores can only make its cache miss, never hit wrongly.
+      env: [...DOTENV_VARS, "DOTENV_KEY"],
       ...profileCacheInputs(env),
     };
   },

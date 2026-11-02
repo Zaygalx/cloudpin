@@ -16,6 +16,12 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
   token or key in the environment or the project's `.env` files), it stops the command. `cloudpin explain` names the
   profile and why. Profiles are read from Wrangler's config folder, which an `XDG_CONFIG_HOME` or (on Windows)
   `APPDATA` set in `.env` moves.
+- Cloudflare account variables (#119): a command line that sets `CLOUDFLARE_ACCOUNT_ID`, `CF_ACCOUNT_ID`,
+  `CLOUDFLARE_ENV`, `WRANGLER_CACHE_DIR`, `DOTENV_KEY` or another variable that picks Wrangler's account to a value
+  cloudpin can't know (`$(...)`, backticks, `$OTHER`) stops as "can't tell" instead of being checked without it.
+- Windows: variable names are read without regard to case, as Windows and the CLIs do (#119), so a lowercase
+  `gh_token`, `aws_profile`, `azure_config_dir` or `cloudflare_account_id` counts. One variable set in two spellings
+  to different values stops as "can't tell".
 
 ## [1.2.1] - 2026-10-29
 

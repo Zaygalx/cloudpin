@@ -35,8 +35,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   how cloudpin does it, with numbers from the test suite.
 - **Short flags joined with `=`** ([#118](https://github.com/paureis/cloudpin/issues/118)): read `-e=production`
   the way each CLI does, in every provider.
-- **Cloudflare account variables** ([#119](https://github.com/paureis/cloudpin/issues/119)): block an account
-  variable whose value cloudpin can't know, and read lowercase names on Windows.
+- **Cloudflare account variables** ([#119](https://github.com/paureis/cloudpin/issues/119)): done. An account
+  variable whose value cloudpin can't know blocks, and Windows reads variable names without regard to case.
 
 ## Ideas (not scheduled yet)
 
