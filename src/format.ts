@@ -7,7 +7,11 @@ type Block = Extract<Verdict, { action: "block" }>;
 const SECRET_FLAGS = ["--token", "--password", "--kube-token"];
 const SECRET_SHORT: Record<string, string[]> = { vercel: ["-t"], vc: ["-t"] };
 
-function displayCommand(argv: string[]): string {
+/**
+ * The command's words with every credential value replaced by `***`, word for
+ * word: same length and positions. For display only; the guard reads the real argv.
+ */
+export function maskArgv(argv: string[]): string[] {
   const bin = argv[0]?.replace(/\\/g, "/").split("/").pop()?.toLowerCase().replace(/\.(exe|cmd|bat|ps1)$/, "") ?? "";
   const short = SECRET_SHORT[bin] ?? [];
   const secret = [...SECRET_FLAGS, ...short];
@@ -15,7 +19,7 @@ function displayCommand(argv: string[]): string {
   // gives the next word to its last letter (github.com/vercel/arg, index.js).
   const endsGroup = (w: string) =>
     /^-[^-=][^=]+$/.test(w) && short.some((f) => w.endsWith(f.slice(1)));
-  const shown = argv.map((a, i) => {
+  return argv.map((a, i) => {
     if (i > 0 && (secret.includes(argv[i - 1]!) || endsGroup(argv[i - 1]!))) return "***";
     const inline = SECRET_FLAGS.find((f) => a.startsWith(`${f}=`));
     if (inline) return `${inline}=***`;
@@ -24,7 +28,10 @@ function displayCommand(argv: string[]): string {
     if (joined) return a[joined.length] === "=" ? `${joined}=***` : `${joined}***`;
     return a;
   });
-  return shown.map((a) => (/[\s"]/.test(a) ? JSON.stringify(a) : a)).join(" ");
+}
+
+function displayCommand(argv: string[]): string {
+  return maskArgv(argv).map((a) => (/[\s"]/.test(a) ? JSON.stringify(a) : a)).join(" ");
 }
 
 /** The message shown when a command is blocked, for a human or an agent. */

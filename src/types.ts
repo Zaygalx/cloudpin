@@ -21,13 +21,24 @@ export interface CommandContext {
   cwd: string;
   /** The command name, e.g. "kubectl" or "helm", for providers that guard several CLIs. */
   bin?: string;
+  /** The platform the command runs on; providers read it, never process.platform, so tests can set it (#136). */
+  platform?: NodeJS.Platform;
 }
 
 /** The identity a command will act as, keyed like the provider's pin section. */
 export type Identity = Record<string, string>;
 
 export type Resolution =
-  | { kind: "identity"; identity: Identity; source: string }
+  | {
+      kind: "identity";
+      identity: Identity;
+      source: string;
+      /**
+       * Fields the command's identity can't be read for, each with why (#165): guard stops a command whose
+       * pin sets one of them, as "can't tell", and checks the other fields as usual.
+       */
+      unknown?: Record<string, string>;
+    }
   | { kind: "logged-out"; hint: string }
   | {
       kind: "error";
@@ -54,8 +65,14 @@ export interface ProviderDef<P extends Provider = Provider> {
   switchHint(pin: NonNullable<Pins[P]>): string;
   /** Command that shows the CLI's login state, suggested when resolving fails. */
   statusCommand: string;
-  /** Environment variables and files that decide the identity (cache invalidation). */
-  cacheInputs(env: NodeJS.ProcessEnv): CacheInputs;
+  /** Environment variables and files that decide the identity (cache invalidation), on `platform` (default: this process's). */
+  cacheInputs(env: NodeJS.ProcessEnv, platform?: NodeJS.Platform): CacheInputs;
+  /**
+   * Every flag `resolve` reads (the ones that pick the account, project, scope, context, ...). A value
+   * cloudpin can't read in advance in one of them means it can't tell which account the command uses,
+   * so guard stops it before `resolve` runs and no such value reaches a CLI (#160).
+   */
+  targetFlags?: readonly string[];
 }
 
 /**
@@ -63,3 +80,12 @@ export interface ProviderDef<P extends Provider = Provider> {
  * runs: `$(...)`, backticks, `$OTHER`, a PowerShell expression (#86).
  */
 export const UNKNOWN_VALUE = "<cloudpin: set by the command line, unknown in advance>";
+
+/**
+ * An argument known only when the command runs, as findInvocations passes it on (#160): a `$(...)` or
+ * backticks, quoted or not, or a quoted `"$VAR"`, read as one word that is not a flag. A flag name
+ * written before it is kept, as in `--context=<this>`.
+ */
+export const DYNAMIC_WORD = "<cloudpin: a word known only when the command runs>";
+/** An unquoted `$VAR` or `${...}`, `$*`, or `"$@"`: bash may split it into several words, flags included. */
+export const DYNAMIC_WORDS = "<cloudpin: words known only when the command runs>";

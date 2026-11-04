@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { parse, YAMLParseError } from "yaml";
-import { commandWords as wordsAfterFlags, hasAnyFlag } from "../args.js";
+import { commandWords as wordsAfterFlags, hasBareFlag } from "../args.js";
 import { home } from "../paths.js";
 import type { ProviderDef, Resolution } from "../types.js";
 
@@ -113,7 +113,7 @@ function splitShortGroups(args: string[], bin: string | undefined): string[] | {
   return out;
 }
 
-interface Kubeconfig {
+export interface Kubeconfig {
   currentContext?: string;
   contexts: Map<string, { cluster?: string; namespace?: string }>;
   clusters: Map<string, { server?: string }>;
@@ -125,7 +125,7 @@ const str = (v: unknown): string | undefined => (typeof v === "string" && v !== 
 const map = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
 /** Reads and merges the kubeconfig files: the first file to set a value or a named entry wins. */
-function loadKubeconfig(explicit: string | undefined, env: NodeJS.ProcessEnv): Loaded {
+export function loadKubeconfig(explicit: string | undefined, env: NodeJS.ProcessEnv): Loaded {
   let paths: string[];
   if (explicit) {
     // --kubeconfig: only that file, which must exist.
@@ -257,7 +257,7 @@ function withoutUserinfo(server: string): string {
   return server.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, "$1");
 }
 
-function normaliseServer(server: string): string {
+export function normaliseServer(server: string): string {
   try {
     const url = new URL(server);
     // URL lowercases the scheme and host; paths stay case-sensitive.
@@ -271,6 +271,11 @@ export const kubernetes: ProviderDef<"kubernetes"> = {
   name: "kubernetes",
   bins: ["kubectl", "helm"],
   statusCommand: "kubectl config view --minify",
+  // The flags resolve reads (#160).
+  targetFlags: [
+    "--kubeconfig", "--context", "--cluster", "--server", "-s", "--namespace", "-n", "--kuberc",
+    "--kube-context", "--kube-apiserver",
+  ],
 
   cacheInputs() {
     // Identity is read from the kubeconfig on every command; nothing is spawned or cached.
@@ -287,9 +292,9 @@ export const kubernetes: ProviderDef<"kubernetes"> = {
   },
 
   isExempt(args, bin) {
-    if (hasAnyFlag(args, ["--help", "-h"])) return true;
+    if (hasBareFlag(args, ["--help", "-h"])) return true;
     const [first] = commandWords(args);
-    if (first === undefined) return hasAnyFlag(args, ["--version"]);
+    if (first === undefined) return hasBareFlag(args, ["--version"]);
     return (bin === "helm" ? HELM_EXEMPT : KUBECTL_EXEMPT).has(first);
   },
 

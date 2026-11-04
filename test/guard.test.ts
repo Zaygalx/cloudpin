@@ -73,14 +73,26 @@ describe("guard", () => {
     expect(await guard(req("gh", ["pr", "list"]), deps(me))).toEqual({ action: "allow", reason: "match" });
   });
 
-  it("blocks a mismatch with the details and how to switch", async () => {
+  it("blocks a mismatch with the details and how to switch, suggesting cloudpin switch too (#14)", async () => {
     expect(await guard(req("gh", ["pr", "list"]), deps(other))).toEqual({
       action: "block",
       provider: "github",
       configPath: "/repo/.cloudpin.yml",
       problems: ['user: expected "paureis", active is "someone"'],
-      fix: "gh auth switch --user paureis",
+      fix: "gh auth switch --user paureis (or run cloudpin switch)",
     });
+  });
+
+  it("does not suggest cloudpin switch where it can only say what to do by hand (supabase, wrangler)", async () => {
+    const supabase = {
+      ...fakeGithub(other),
+      name: "supabase",
+      bins: ["supabase"],
+      switchHint: () => "supabase link --project-ref abcdefghijklmnopqrst",
+    } as unknown as ProviderDef;
+    const cfg: FoundConfig = { path: "/repo/.cloudpin.yml", pins: { supabase: { project: "abcdefghijklmnopqrst" } } };
+    const v = await guard(req("supabase", ["db", "push"]), { ...deps(other, cfg), providers: [supabase] });
+    expect(v).toMatchObject({ action: "block", fix: "supabase link --project-ref abcdefghijklmnopqrst" });
   });
 
   it("blocks when logged out, suggesting the login command", async () => {
@@ -96,6 +108,17 @@ describe("guard", () => {
       problems: ["network down"],
       fix: "gh auth status",
     });
+  });
+
+  it("can't tell a pinned field the identity can't be read for, and checks the rest as usual (#165)", async () => {
+    const unknown = (field: string): Resolution => ({ ...me, unknown: { [field]: "user is unreadable" } });
+    expect(await guard(req("gh", ["pr", "list"]), deps(unknown("user")))).toMatchObject({
+      action: "block",
+      uncertain: true,
+      problems: ["user is unreadable"],
+      fix: "gh auth status",
+    });
+    expect(await guard(req("gh", ["pr", "list"]), deps(unknown("host")))).toEqual({ action: "allow", reason: "match" });
   });
 
   it("fails closed on an invalid config file", async () => {

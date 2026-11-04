@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { commandName } from "../src/guard.js";
-import { envFor, findInvocations, UNKNOWN_VALUE } from "../src/shellwords.js";
+import { findInvocations, UNKNOWN_VALUE } from "../src/shellwords.js";
+import { DYNAMIC_WORD, DYNAMIC_WORDS } from "../src/types.js";
+import { envFor } from "../src/user-env.js";
 
 const GUARDED = ["az", "aws", "gcloud", "vercel", "gh"];
 const find = (cmd: string) => findInvocations(cmd, GUARDED);
@@ -90,8 +92,9 @@ describe("findInvocations", () => {
   it.each([
     ["timeout 30 gh pr list", ["pr", "list"]],
     ["timeout -s KILL 30s gh pr list", ["pr", "list"]],
-    ["xargs -n 1 gh repo delete", ["repo", "delete"]],
-    ["xargs -I {} gh repo view {}", ["repo", "view", "{}"]],
+    // xargs adds the words it reads, or puts one where -I's string is (#162).
+    ["xargs -n 1 gh repo delete", ["repo", "delete", DYNAMIC_WORDS]],
+    ["xargs -I {} gh repo view {}", ["repo", "view", DYNAMIC_WORD]],
   ])("sees through %j", (cmd, args) => {
     expect(find(cmd)).toEqual([{ bin: "gh", args, env: {} }]);
   });
@@ -200,5 +203,12 @@ describe("envFor (#86)", () => {
     expect(envFor({ HOME: "/h" }, inv!, { agent: true })).toEqual({ HOME: "/h" });
     // The user's own shell (not agent mode) may set it.
     expect(envFor({ HOME: "/h" }, inv!)).toEqual({ HOME: "/h", CLOUDPIN_BRANCH: "main" });
+  });
+
+  it("never lets the line set CLOUDPIN_ENV_FILE for an agent (#14)", () => {
+    const [inv] = findInvocations("CLOUDPIN_ENV_FILE=/tmp/x cloudpin switch --yes", ["cloudpin"]);
+    expect(inv!.env).toEqual({ CLOUDPIN_ENV_FILE: "/tmp/x" });
+    expect(envFor({ HOME: "/h" }, inv!, { agent: true })).toEqual({ HOME: "/h" });
+    expect(envFor({ HOME: "/h" }, inv!)).toEqual({ HOME: "/h", CLOUDPIN_ENV_FILE: "/tmp/x" });
   });
 });

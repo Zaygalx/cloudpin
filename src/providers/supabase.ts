@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve as resolvePath } from "node:path";
-import { commandWords, flagValue, hasAnyFlag } from "../args.js";
+import { commandWords, flagValue, hasBareFlag } from "../args.js";
 import { home } from "../paths.js";
 import type { ProviderDef } from "../types.js";
 
@@ -95,6 +95,8 @@ export const supabase: ProviderDef<"supabase"> = {
   name: "supabase",
   bins: ["supabase"],
   statusCommand: "supabase projects list",
+  // The flags resolve reads (#160).
+  targetFlags: ["--workdir", "--db-url", "--project-ref", "--project-id", "--profile"],
 
   cacheInputs(env) {
     // The token may also be in the OS keyring, which can't be stamped; a
@@ -110,7 +112,9 @@ export const supabase: ProviderDef<"supabase"> = {
   },
 
   isExempt(args) {
-    if (hasAnyFlag(args, ["--help", "-h", "--version", "-v"])) return true;
+    // effect/cli runs the help and version actions instead of the command wherever they come
+    // before "--" (Effect-TS/effect-smol unstable/cli Command.ts runWith).
+    if (hasBareFlag(args, ["--help", "-h", "--version", "-v"])) return true;
     const dbUrl = flagValue(args, ["--db-url"]);
     if (dbUrl !== undefined) return isLocalUrl(dbUrl);
     const words = commandWords(args, VALUE_FLAGS);

@@ -66,7 +66,7 @@ describe("runCheck", () => {
     const report = await runCheck("/repo", {}, deps(githubPinned, [provider("github", as("other"))]));
     expect(report.result).toBe("mismatch");
     expect(report.providers).toEqual([
-      { provider: "github", status: "mismatch", problems: ['user: expected "me", active is "other"'], fix: "switch" },
+      { provider: "github", status: "mismatch", problems: ['user: expected "me", active is "other"'], fix: "switch (or run cloudpin switch)" },
     ]);
     expect(checkExitCode(report)).toBe(1);
   });
@@ -225,7 +225,7 @@ describe("formatCheckText", () => {
       "cloudpin: checking /repo/.cloudpin.yml",
       "  x  github",
       '     - user: expected "me", active is "other"',
-      "     fix: switch",
+      "     fix: switch (or run cloudpin switch)",
     ]);
   });
 

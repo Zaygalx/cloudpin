@@ -1,8 +1,11 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { FoundConfig } from "../src/config.js";
+import { findConfig, type FoundConfig } from "../src/config.js";
 import type { GuardDeps } from "../src/guard.js";
 import { AGENTS, runHook } from "../src/hooks/agents.js";
 import type { ProviderDef } from "../src/types.js";
+import { tempDir } from "./tmp.js";
 
 // Fake gh whose active user comes from FAKE_GH_USER, defaulting to the pinned one.
 const gh: ProviderDef<"github"> = {
@@ -254,6 +257,82 @@ describe("runHook: protected environments", () => {
 
   it("lets an agent read the current environment with a bare cloudpin use", async () => {
     expect(await runHook(AGENTS.claude, claude("cloudpin use"), deps, {})).toBe("");
+  });
+});
+
+// #14: switching accounts is the human's call, exactly as `cloudpin use <env>` is.
+describe("runHook: cloudpin switch", () => {
+  it("asks the human on agents that can ask, with what would be switched to; --yes changes nothing", async () => {
+    for (const command of ["cloudpin switch", "cloudpin switch --yes", "npx cloudpin switch --json --only github"]) {
+      const out = JSON.parse(await runHook(AGENTS.claude, inputs.codex(command), deps, {}));
+      expect(out.hookSpecificOutput.permissionDecision, command).toBe("ask");
+      const reason: string = out.hookSpecificOutput.permissionDecisionReason;
+      expect(reason).toContain("cloudpin switch");
+      expect(reason).toContain("/repo/.cloudpin.yml");
+      expect(reason).toContain("github user paureis");
+      expect(reason).toContain("needs your OK");
+    }
+    expect(JSON.parse(await runHook(AGENTS.copilot, inputs.copilot("cloudpin switch"), deps, {})).permissionDecision).toBe("ask");
+    expect(JSON.parse(await runHook(AGENTS.cursor, inputs.cursor("cloudpin switch"), deps, {})).permission).toBe("ask");
+    // Antigravity confirms with force_ask, as for cloudpin use.
+    expect(JSON.parse(await runHook(AGENTS.antigravity, inputs.antigravity("cloudpin switch"), deps, {})).decision).toBe("force_ask");
+  });
+
+  it("denies on agents without an ask, telling the agent to ask the human to run it", async () => {
+    const codex = JSON.parse(await runHook(AGENTS.codex, inputs.codex("cloudpin switch --yes"), deps, {}));
+    expect(codex.hookSpecificOutput.permissionDecision).toBe("deny");
+    expect(codex.hookSpecificOutput.permissionDecisionReason).toContain("ask the human to run `cloudpin switch`");
+    const gemini = JSON.parse(await runHook(AGENTS.gemini, inputs.gemini("cloudpin switch"), deps, {}));
+    expect(gemini.decision).toBe("deny");
+  });
+
+  it("asks even where nothing is pinned, naming no pins", async () => {
+    const out = JSON.parse(
+      await runHook(AGENTS.claude, JSON.stringify({ tool_name: "Bash", tool_input: { command: "cloudpin switch" }, cwd: "/elsewhere" }), deps, {}),
+    );
+    expect(out.hookSpecificOutput.permissionDecision).toBe("ask");
+  });
+
+  it("does not ask about cloudpin switch --help", async () => {
+    expect(await runHook(AGENTS.claude, inputs.codex("cloudpin switch --help"), deps, {})).toBe("");
+    expect(await runHook(AGENTS.claude, inputs.codex("cloudpin switch -h"), deps, {})).toBe("");
+  });
+
+  it("asks when cloudpin switch or cloudpin use is wrapped in cloudpin exec, nested or not", async () => {
+    for (const command of [
+      "cloudpin exec -- cloudpin switch --yes",
+      "cloudpin exec cloudpin switch --yes",
+      "cloudpin exec -- cloudpin exec cloudpin switch --yes",
+      "cloudpin exec -- cloudpin use prod",
+    ]) {
+      const claude = JSON.parse((await runHook(AGENTS.claude, inputs.codex(command), deps, {})) || "{}");
+      expect(claude.hookSpecificOutput?.permissionDecision, command).toBe("ask");
+      const codex = JSON.parse((await runHook(AGENTS.codex, inputs.codex(command), deps, {})) || "{}");
+      expect(codex.hookSpecificOutput?.permissionDecision, command).toBe("deny");
+    }
+    expect(await runHook(AGENTS.claude, inputs.codex("cloudpin exec -- cloudpin switch --help"), deps, {})).toBe("");
+  });
+
+  it("names the environment the line selects, and shows its CLOUDPIN_ENV, as the real run would honour it", async () => {
+    const dir = tempDir("cloudpin-hook-switch-");
+    writeFileSync(
+      join(dir, ".cloudpin.yml"),
+      "environments:\n  staging:\n    github: { user: stage-bot }\n  production:\n    protected: true\n    github: { user: prod-owner }\n",
+    );
+    const realDeps: GuardDeps = { ...deps, findConfig };
+    const input = JSON.stringify({
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "CLOUDPIN_ENV=production cloudpin switch --yes" },
+      cwd: dir,
+    });
+    const out = JSON.parse(await runHook(AGENTS.claude, input, realDeps, {}));
+    expect(out.hookSpecificOutput.permissionDecision).toBe("ask");
+    const reason: string = out.hookSpecificOutput.permissionDecisionReason;
+    expect(reason).toContain('environment "production"');
+    expect(reason).toContain("github user prod-owner");
+    expect(reason).not.toContain("stage-bot");
+    expect(reason).toContain("CLOUDPIN_ENV=production cloudpin switch --yes");
   });
 });
 

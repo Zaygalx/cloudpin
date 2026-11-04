@@ -1,17 +1,18 @@
 # cloudpin's MCP server
 
 `cloudpin mcp` is an MCP server (stdio) for any agent that supports MCP. The
-[Claude Code plugin](../README.md#claude-code-plugin) starts it for you. It has two tools:
+[Claude Code plugin](../README.md#claude-code-plugin) starts it for you. It has three tools:
 
 | Tool | Answers |
 |---|---|
 | `cloudpin_status` | which account each CLI is using here, what the project pins, which environment applies, which hooks are installed (the same as `cloudpin status --json`) |
-| `cloudpin_check` | would cloudpin allow this command line, as an agent's: each call, the account it would use and why, and the verdict with its reason and fix (the same as `cloudpin explain --agent --json`) |
+| `cloudpin_check` | would cloudpin allow this command line, as an agent's: each call, the account it would use and why, and the verdict with its reason and fix (the same as `cloudpin explain --agent --json`). The line is read as bash; pass `shell: "powershell"` for a PowerShell command (`--powershell` for `explain`) |
+| `cloudpin_doctor` | why cloudpin may not be guarding here: cloudpin on PATH, shell wrappers, agent hooks missing or out of date, on Windows the PowerShell execution policy and PATH, the pin file and each CLI's account, each with its fix (the same as `cloudpin doctor --json`, account IDs shortened; it skips the identity cache check, which writes a file, and says so) |
 
-Neither tool runs, switches or changes anything, by design: an agent that could switch accounts could switch to the
+No tool runs, switches or changes anything, by design: an agent that could switch accounts could switch to the
 wrong one, and only you know which account the work is for.
 
-When an agent connects, the server also hands it a few lines of instructions (1.2.0, out 2026-11-05): check first, and
+When an agent connects, the server also hands it a few lines of instructions: check first, and
 on a block stop and tell you the reason and the fix, never work around it.
 
 ## Add it to your agent
@@ -86,4 +87,5 @@ instructions tell the agent so.
 MCP gives an agent advice: nothing stops it from running a command without checking. Codex, Cursor and Gemini CLI can
 also take the blocking hook (`cloudpin install-hook <agent>`, see
 [Protect your AI agent](../README.md#protect-your-ai-agent)). cloudpin has no hook for VS Code, Windsurf or Claude
-Desktop, so there the MCP server is advice only.
+Desktop, so there the MCP server is advice only. An agent built with the Claude Agent SDK can take the blocking hook
+too: see [Guard a Claude Agent SDK app](agent-sdk.md).

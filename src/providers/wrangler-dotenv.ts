@@ -33,6 +33,13 @@ export const DOTENV_VARS = [
   "CLOUDFLARE_EMAIL",
   "CF_EMAIL",
   "CLOUDFLARE_AUTH_USE_KEYRING",
+  // Picks the default profile's login file and the API whoami asks (#103).
+  "WRANGLER_API_ENVIRONMENT",
+  // Move the config folder holding profile bindings and logins: workers-utils xdg-app-paths.ts xdgConfig
+  // reads them from process.env, which by then holds the .env values. HOME and USERPROFILE don't belong
+  // here: Wrangler reads the home folder through os.homedir(), which never sees them (#103).
+  "XDG_CONFIG_HOME",
+  "APPDATA",
 ];
 
 // --- Begin code from dotenv 16.3.1 -------------------------------------------

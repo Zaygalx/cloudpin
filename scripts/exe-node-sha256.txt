@@ -1,0 +1,5 @@
+# sha256 of the Node files cloudpin.exe is built from (scripts/build-exe.mjs), from nodejs.org/dist/v<version>/SHASUMS256.txt.
+# Regenerate with: node scripts/build-exe.mjs --print-hashes > scripts/exe-node-sha256.txt
+# after bumping exe-node-version.txt, and compare with the release's signed SHASUMS256.txt.asc before committing.
+14319838b3f355e0398c13569a90270bce4fc68f25189f58c59b03dadae0e6d5  v26.13.0/win-x64/node.exe
+5848553868b402d3fabb5b09270649977780a390f832155721025a08b5104455  v26.13.0/node-v26.13.0-linux-x64.tar.gz

@@ -32,13 +32,26 @@ Run the type-check and the tests as separate commands and read each exit code.
 | `src/providers/` | One file per CLI, implementing `ProviderDef` from `src/types.ts` |
 | `src/guard.ts` | The allow-or-block decision |
 | `src/check.ts` | `cloudpin check`: the report behind it, its text and JSON output, and `--only` |
-| `src/status.ts`, `src/doctor.ts` | `cloudpin status` and `cloudpin doctor` (read-only overviews) |
+| `src/switch.ts` | `cloudpin switch`: plan, confirm, run and re-check; `planSwitch` runs nothing |
+| `src/switch-plan.ts`, `src/switch-planners.ts`, `src/switch-plan-files.ts` | The plan's shape; the planners that ask a CLI; the ones that read a config file (kubectl, AWS) |
+| `src/aws-config.ts` | Profile names and accounts from the AWS config file, for `cloudpin switch` (nothing else is kept) |
+| `src/status.ts`, `src/doctor.ts`, `src/doctor-windows.ts` | `cloudpin status` and `cloudpin doctor` (read-only overviews), and doctor's Windows-only checks |
 | `src/explain.ts` | `cloudpin explain`: a verdict and its reasons, from guard's `Trace` |
-| `src/mcp.ts`, `src/mcp-tools.ts` | `cloudpin mcp`: the JSON-RPC stdio server, and its two read-only tools |
+| `src/mcp.ts`, `src/mcp-tools.ts` | `cloudpin mcp`: the JSON-RPC stdio server, and its read-only tools |
 | `plugin/`, `.claude-plugin/marketplace.json` | The Claude Code plugin (hook, MCP server, skill) and its marketplace |
 | `src/shellwords.ts` | Finds CLI calls inside a full shell command line |
+| `src/shell-tokens.ts` | The tokenizer behind it: words, operators, `$( )` and heredocs, read as bash reads them |
+| `src/ps-tokens.ts` | The same tokens from a PowerShell line, read as PowerShell reads it, and the arguments Windows PowerShell 5.1 hands a CLI |
+| `src/ps-words.ts` | PowerShell variables, assignments and keywords, for `shellwords.ts` |
+| `src/wrappers.ts` | Commands that run the command after their own flags (env, sudo, nice, timeout, xargs, npx, pnpm...), each with its flag table from the tool's docs |
+| `src/runners.ts` | Commands that run a line or a list they are given: bash -c, watch, cmd /c, powershell and pwsh, Invoke-Expression, Start-Process |
+| `src/cmd-line.ts` | The commands cmd.exe runs from a `cmd /c` line |
+| `src/redirections.ts` | Shell redirections (`2>&1`, `>out`, `*>`), which shellwords drops from a call's arguments |
 | `src/hooks/agents.ts` | One adapter per AI agent's hook format |
 | `src/cache.ts` | The identity cache |
-| `src/update.ts`, `src/install-method.ts` | The daily update notice, and how cloudpin was installed (npm, Homebrew, Scoop, pnpm, Volta, Yarn, Bun) so upgrade advice names the right command |
+| `src/update.ts`, `src/install-method.ts` | The daily update notice, and how cloudpin was installed (npm, Homebrew, Scoop, pnpm, Volta, Yarn, Bun, winget, the standalone exe) so upgrade advice names the right command |
+| `src/version.ts` | cloudpin's version: package.json's, or the literal the exe bundle inlines |
 | `src/cli.ts` | The `cloudpin` command |
+| `scripts/build-exe.mjs`, `scripts/check-exe.ps1` | The standalone `cloudpin.exe` (a Node SEA) and its zip, and the Windows checks Nightly runs on it |
+| `packaging/winget/`, `docs/winget.md` | The winget manifest templates that `scripts/bump-installers.mjs --winget` fills in, and how the maintainer submits them |
 | `DESIGN.md` | Product decisions and why they were made |

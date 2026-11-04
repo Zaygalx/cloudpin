@@ -11,3 +11,8 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    groups:
+      # init and analyze must run the same version; a PR bumping one fails CodeQL's job.
+      codeql-action:
+        patterns:
+          - github/codeql-action*

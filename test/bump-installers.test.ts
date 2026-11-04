@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { bumpFormula, bumpInstallers, bumpManifest, parseArgs, shaFor } from "../scripts/bump-installers.mjs";
+import { parse } from "yaml";
+import { bumpFormula, bumpInstallers, bumpManifest, parseArgs, renderWinget, shaFor } from "../scripts/bump-installers.mjs";
 import { tempDir } from "./tmp.js";
 
 const OLD_SHA = "4556f4ad13f9d2f9e8103cd8910edfd16cd8f19296e8cb9a3123583c7587a35a";
@@ -60,8 +61,15 @@ const MANIFEST = (version = "0.0.0", hash = ZEROS) => String.raw`{
 }
 `;
 
-const SUMS = (version: string, sha = NEW_SHA, zipSha = ZIP_SHA) =>
-  `${sha}  cloudpin-${version}.tgz\n${zipSha}  cloudpin-${version}-windows.zip\n`;
+// Stand-in bytes for the 1.2.0 standalone exe zip (#96), and their sha256.
+const EXE_ZIP = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x45, 0x58, 0x45]);
+const EXE_SHA = createHash("sha256").update(EXE_ZIP).digest("hex");
+const EXE_URL = "https://github.com/paureis/cloudpin/releases/download/v1.2.0/cloudpin-1.2.0-win-x64.zip";
+const RELEASE_API = "https://api.github.com/repos/paureis/cloudpin/releases/tags/v1.2.0";
+const RELEASE = { body: JSON.stringify({ tag_name: "v1.2.0", draft: false, published_at: "2026-12-03T17:04:05Z" }) };
+
+const SUMS = (version: string, sha = NEW_SHA, zipSha = ZIP_SHA, exeSha = EXE_SHA) =>
+  `${sha}  cloudpin-${version}.tgz\n${zipSha}  cloudpin-${version}-windows.zip\n${exeSha}  cloudpin-${version}-win-x64.zip\n`;
 
 function bucket(manifest = MANIFEST()): string {
   const dir = tempDir("cloudpin-bucket-");
@@ -86,10 +94,19 @@ function tap(formula = FORMULA): string {
 type Reply = { body: string | Uint8Array; status?: number } | null;
 
 /**
- * A fetch that serves `body` (null: offline) for the release's SHA256SUMS and
- * `tarball` for the registry tarball, and records what was asked.
+ * A fetch that serves `body` (null: offline) for the release's SHA256SUMS,
+ * `tarball` for the registry tarball, `zip` for the Windows zip, and `more.exe`
+ * and `more.release` for the exe zip and the GitHub Release's API record, and
+ * records what was asked.
  */
-function fakeFetch(body: string | null, status = 200, tarball: Reply = { body: TARBALL }, zip: Reply = { body: ZIP }) {
+function fakeFetch(
+  body: string | null,
+  status = 200,
+  tarball: Reply = { body: TARBALL },
+  zip: Reply = { body: ZIP },
+  more: { exe?: Reply; release?: Reply } = {},
+) {
+  const { exe = { body: EXE_ZIP }, release = RELEASE } = more;
   const asked: string[] = [];
   const impl = (async (url: string) => {
     asked.push(url);
@@ -101,7 +118,11 @@ function fakeFetch(body: string | null, status = 200, tarball: Reply = { body: T
         ? tarball
         : url.endsWith("-windows.zip")
           ? zip
-          : { body: "", status: 404 };
+          : url.endsWith("-win-x64.zip")
+            ? exe
+            : url.startsWith("https://api.github.com/repos/paureis/cloudpin/releases/tags/")
+              ? release
+              : { body: "", status: 404 };
     if (reply === null) throw new Error("offline");
     const bytes = typeof reply.body === "string" ? new TextEncoder().encode(reply.body) : reply.body;
     const code = reply.status ?? 200;
@@ -123,17 +144,34 @@ describe("parseArgs", () => {
     expect(parseArgs(["--bucket", "/y", "1.2.0", "--tap", "/x"])).toEqual({ version: "1.2.0", tap: "/x", bucket: "/y", force: false });
   });
 
+  it("takes --winget, with --date for the release date", () => {
+    expect(parseArgs(["1.2.0", "--winget", "/w"])).toEqual({ version: "1.2.0", winget: "/w", force: false });
+    expect(parseArgs(["--date", "2026-12-03", "--winget", "/w", "1.2.0", "--bucket", "/y"])).toEqual({
+      version: "1.2.0",
+      winget: "/w",
+      date: "2026-12-03",
+      bucket: "/y",
+      force: false,
+    });
+  });
+
   it.each([
     [[], /usage/],
-    [["1.2.0"], /--tap <path>, --bucket <path>/],
+    [["1.2.0"], /--tap <path>, --bucket <path>, --winget <dir>/],
     [["1.2.0", "--tap"], /--tap needs a path/],
     [["1.2.0", "--bucket"], /--bucket needs a path/],
     [["1.2.0", "--bucket", "--tap", "/x"], /--bucket needs a path/],
+    [["1.2.0", "--winget"], /--winget needs a path/],
     [["v1.2.0", "--tap", "/x"], /x\.y\.z/],
     [["1.2", "--tap", "/x"], /x\.y\.z/],
     [["1.2.0-beta.1", "--tap", "/x"], /x\.y\.z/],
-    [["1.2.0", "--tap", "/x", "--winget", "/y"], /unknown option --winget/],
+    [["1.2.0", "--tap", "/x", "--chocolatey", "/y"], /unknown option --chocolatey/],
     [["1.2.0", "1.3.0", "--tap", "/x"], /one version/],
+    [["1.2.0", "--winget", "/w", "--date"], /--date needs a YYYY-MM-DD date/],
+    [["1.2.0", "--winget", "/w", "--date", "12/03/2026"], /--date must be YYYY-MM-DD/],
+    [["1.2.0", "--winget", "/w", "--date", "2026-02-30"], /--date must be YYYY-MM-DD.*2026-02-30/],
+    [["1.2.0", "--winget", "/w", "--date", "2026-13-01"], /--date must be YYYY-MM-DD/],
+    [["1.2.0", "--bucket", "/y", "--date", "2026-12-03"], /--date only applies to --winget/],
   ])("refuses %j", (argv, message) => {
     expect(() => parseArgs(argv)).toThrow(message);
   });
@@ -343,5 +381,199 @@ describe("bumpInstallers --tap --bucket", () => {
       bumpInstallers({ version: "1.2.0", tap: tap(), bucket: bucket(MANIFEST("1.2.0", ZIP_SHA)), force: false }, f.impl),
     ).rejects.toThrow(/bucket[\\/]cloudpin\.json: 1\.2\.0 is not newer than 1\.2\.0/);
     expect(f.asked).toEqual([]);
+  });
+});
+
+// winget (#96): packaging/winget/ holds the three manifest templates.
+const TEMPLATE_DIR = new URL("../packaging/winget/", import.meta.url);
+const WINGET_FILES = ["paureis.cloudpin.yaml", "paureis.cloudpin.installer.yaml", "paureis.cloudpin.locale.en-US.yaml"];
+const templates = () => Object.fromEntries(WINGET_FILES.map((f) => [f, readFileSync(new URL(f, TEMPLATE_DIR), "utf8")]));
+const DESCRIPTION = (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { description: string }).description;
+const VALUES = { version: "1.2.0", sha256: EXE_SHA, releaseDate: "2026-12-03" };
+
+type Installer = {
+  Architecture: string;
+  InstallerType: string;
+  NestedInstallerType: string;
+  NestedInstallerFiles: { RelativeFilePath: string; PortableCommandAlias: string }[];
+  InstallerUrl: string;
+  InstallerSha256: string;
+};
+
+describe("renderWinget", () => {
+  it("has exactly the three templates winget-pkgs' multi-file layout needs", () => {
+    expect(readdirSync(TEMPLATE_DIR).sort()).toEqual([...WINGET_FILES].sort());
+  });
+
+  it("fills in the version, the exe zip's url and uppercase sha256, and the release date", () => {
+    const out = renderWinget(templates(), VALUES);
+    expect(Object.keys(out).sort()).toEqual([...WINGET_FILES].sort());
+    for (const text of Object.values(out)) expect(text).not.toMatch(/__[A-Z_]+__/);
+
+    const version = parse(out["paureis.cloudpin.yaml"]!);
+    expect(version).toEqual({
+      PackageIdentifier: "paureis.cloudpin",
+      PackageVersion: "1.2.0",
+      DefaultLocale: "en-US",
+      ManifestType: "version",
+      ManifestVersion: "1.28.0",
+    });
+
+    const installer = parse(out["paureis.cloudpin.installer.yaml"]!);
+    expect(installer).toMatchObject({
+      PackageIdentifier: "paureis.cloudpin",
+      PackageVersion: "1.2.0",
+      ReleaseDate: "2026-12-03",
+      ManifestType: "installer",
+      ManifestVersion: "1.28.0",
+    });
+    expect(installer.Installers).toEqual([
+      {
+        Architecture: "x64",
+        InstallerType: "zip",
+        NestedInstallerType: "portable",
+        NestedInstallerFiles: [{ RelativeFilePath: "cloudpin.exe", PortableCommandAlias: "cloudpin" }],
+        InstallerUrl: EXE_URL,
+        InstallerSha256: EXE_SHA.toUpperCase(),
+      } satisfies Installer,
+    ]);
+
+    const locale = parse(out["paureis.cloudpin.locale.en-US.yaml"]!);
+    expect(locale).toMatchObject({
+      PackageIdentifier: "paureis.cloudpin",
+      PackageVersion: "1.2.0",
+      PackageLocale: "en-US",
+      Publisher: "paureis",
+      PackageName: "cloudpin",
+      PackageUrl: "https://github.com/paureis/cloudpin",
+      PublisherUrl: "https://github.com/paureis",
+      License: "MIT",
+      LicenseUrl: "https://github.com/paureis/cloudpin/blob/main/LICENSE",
+      ShortDescription: DESCRIPTION,
+      ReleaseNotesUrl: "https://github.com/paureis/cloudpin/releases/tag/v1.2.0",
+      ManifestType: "defaultLocale",
+      ManifestVersion: "1.28.0",
+    });
+    // winget-pkgs: at most 16 tags, lowercase with hyphens.
+    expect(locale.Tags.length).toBeLessThanOrEqual(16);
+    for (const tag of locale.Tags) expect(tag).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+  });
+
+  it("starts each file with the schema header for its own type and version", () => {
+    const out = renderWinget(templates(), VALUES);
+    for (const [file, text] of Object.entries(out)) {
+      const doc = parse(text) as { ManifestType: string; ManifestVersion: string };
+      const schema = `# yaml-language-server: $schema=https://aka.ms/winget-manifest.${doc.ManifestType}.${doc.ManifestVersion}.schema.json`;
+      expect(text.split("\n").slice(0, 2), file).toContain(schema);
+    }
+  });
+
+  it("fails on a placeholder it doesn't know, a file that doesn't parse, or a file for another package or version", () => {
+    const t = templates();
+    const withExtra = { ...t, "paureis.cloudpin.yaml": t["paureis.cloudpin.yaml"] + "Moniker: __MONIKER__\n" };
+    expect(() => renderWinget(withExtra, VALUES)).toThrow(/paureis\.cloudpin\.yaml: __MONIKER__ is not filled in/);
+    const broken = { ...t, "paureis.cloudpin.yaml": t["paureis.cloudpin.yaml"] + "  : [\n" };
+    expect(() => renderWinget(broken, VALUES)).toThrow(/paureis\.cloudpin\.yaml is not valid YAML/);
+    const other = { ...t, "paureis.cloudpin.yaml": t["paureis.cloudpin.yaml"]!.replace("PackageIdentifier: paureis.cloudpin", "PackageIdentifier: other.pkg") };
+    expect(() => renderWinget(other, VALUES)).toThrow(/paureis\.cloudpin\.yaml: PackageIdentifier is other\.pkg, not paureis\.cloudpin/);
+    const pinned = { ...t, "paureis.cloudpin.installer.yaml": t["paureis.cloudpin.installer.yaml"]!.replace("PackageVersion: __VERSION__", "PackageVersion: 1.0.0") };
+    expect(() => renderWinget(pinned, VALUES)).toThrow(/paureis\.cloudpin\.installer\.yaml: PackageVersion is 1\.0\.0, not 1\.2\.0/);
+    const { ["paureis.cloudpin.locale.en-US.yaml"]: _gone, ...missing } = t;
+    expect(() => renderWinget(missing, VALUES)).toThrow(/paureis\.cloudpin\.locale\.en-US\.yaml/);
+  });
+});
+
+const wingetDir = (out: string, version = "1.2.0") => join(out, "manifests", "p", "paureis", "cloudpin", version);
+const readWinget = (out: string) => Object.fromEntries(WINGET_FILES.map((f) => [f, readFileSync(join(wingetDir(out), f), "utf8")]));
+
+describe("bumpInstallers --winget", () => {
+  it("checks the exe zip against SHA256SUMS and writes the three manifests in winget-pkgs' layout, with --date", async () => {
+    const out = tempDir("cloudpin-winget-");
+    const f = fakeFetch(SUMS("1.2.0"));
+    const lines = await bumpInstallers({ version: "1.2.0", winget: out, date: "2026-12-03", force: false }, f.impl);
+    expect(f.asked).toEqual([RELEASE_SUMS, EXE_URL]);
+    expect(readWinget(out)).toEqual(renderWinget(templates(), VALUES));
+    expect(lines.join("\n")).toContain(wingetDir(out));
+    expect(lines.join("\n")).toContain(EXE_SHA.toUpperCase());
+    expect(lines.join("\n")).toContain("2026-12-03");
+  });
+
+  it("takes the release date from the GitHub Release's published date without --date", async () => {
+    const out = tempDir("cloudpin-winget-");
+    const f = fakeFetch(SUMS("1.2.0"), 200, { body: TARBALL }, { body: ZIP }, {
+      release: { body: JSON.stringify({ draft: false, published_at: "2026-12-04T01:30:00Z" }) },
+    });
+    await bumpInstallers({ version: "1.2.0", winget: out, force: false }, f.impl);
+    expect(f.asked).toEqual([RELEASE_SUMS, RELEASE_API, EXE_URL]);
+    expect(parse(readWinget(out)["paureis.cloudpin.installer.yaml"]!).ReleaseDate).toBe("2026-12-04");
+  });
+
+  it.each([
+    ["SHA256SUMS lacks the exe zip", fakeFetch(`${NEW_SHA}  cloudpin-1.2.0.tgz\n`), /no line for cloudpin-1\.2\.0-win-x64\.zip/],
+    [
+      "the exe zip differs from SHA256SUMS",
+      fakeFetch(SUMS("1.2.0"), 200, { body: TARBALL }, { body: ZIP }, { exe: { body: new Uint8Array([...EXE_ZIP, 0]) } }),
+      new RegExp(`${escapeRegExp(EXE_URL)} has sha256 [0-9a-f]{64}, but SHA256SUMS says ${EXE_SHA}; nothing was written`),
+    ],
+    [
+      "the release has no exe zip",
+      fakeFetch(SUMS("1.2.0"), 200, { body: TARBALL }, { body: ZIP }, { exe: { body: "Not Found", status: 404 } }),
+      /win-x64\.zip: HTTP 404.*release's assets/s,
+    ],
+    ["the exe zip can't be downloaded", fakeFetch(SUMS("1.2.0"), 200, { body: TARBALL }, { body: ZIP }, { exe: null }), /could not download .*win-x64\.zip.*offline/],
+    [
+      "the GitHub Release isn't found",
+      fakeFetch(SUMS("1.2.0"), 200, { body: TARBALL }, { body: ZIP }, { release: { body: "Not Found", status: 404 } }),
+      /releases\/tags\/v1\.2\.0: HTTP 404.*--date YYYY-MM-DD/s,
+    ],
+    ["the GitHub API can't be reached", fakeFetch(SUMS("1.2.0"), 200, { body: TARBALL }, { body: ZIP }, { release: null }), /could not download .*releases\/tags\/v1\.2\.0.*offline/],
+    [
+      "the release is still a draft",
+      fakeFetch(SUMS("1.2.0"), 200, { body: TARBALL }, { body: ZIP }, { release: { body: JSON.stringify({ draft: true, published_at: null }) } }),
+      /v1\.2\.0 has no published date.*--date YYYY-MM-DD/s,
+    ],
+    [
+      "the API's answer isn't JSON",
+      fakeFetch(SUMS("1.2.0"), 200, { body: TARBALL }, { body: ZIP }, { release: { body: "<html>" } }),
+      /v1\.2\.0 has no published date/,
+    ],
+  ])("writes nothing when %s", async (_what, f, message) => {
+    const out = tempDir("cloudpin-winget-");
+    await expect(bumpInstallers({ version: "1.2.0", winget: out, force: false }, f.impl)).rejects.toThrow(message);
+    expect(readdirSync(out)).toEqual([]);
+  });
+
+  it("refuses a version folder that already has files, before downloading anything, unless --force", async () => {
+    const out = tempDir("cloudpin-winget-");
+    mkdirSync(wingetDir(out), { recursive: true });
+    writeFileSync(join(wingetDir(out), "paureis.cloudpin.yaml"), "old\n");
+    const f = fakeFetch(SUMS("1.2.0"));
+    await expect(bumpInstallers({ version: "1.2.0", winget: out, date: "2026-12-03", force: false }, f.impl)).rejects.toThrow(
+      /cloudpin[\\/]1\.2\.0 already has files.*--force/,
+    );
+    expect(f.asked).toEqual([]);
+    expect(readFileSync(join(wingetDir(out), "paureis.cloudpin.yaml"), "utf8")).toBe("old\n");
+    await bumpInstallers({ version: "1.2.0", winget: out, date: "2026-12-03", force: true }, f.impl);
+    expect(readWinget(out)).toEqual(renderWinget(templates(), VALUES));
+  });
+
+  it("with --bucket, writes neither when the exe zip is wrong, though the Windows zip is right", async () => {
+    const b = bucket();
+    const out = tempDir("cloudpin-winget-");
+    const f = fakeFetch(SUMS("1.2.0"), 200, { body: TARBALL }, { body: ZIP }, { exe: { body: new Uint8Array([1]) } });
+    await expect(bumpInstallers({ version: "1.2.0", bucket: b, winget: out, date: "2026-12-03", force: false }, f.impl)).rejects.toThrow(
+      /nothing was written/,
+    );
+    expect(f.asked).toEqual([RELEASE_SUMS, ZIP_URL, EXE_URL]);
+    expect(readManifestFile(b)).toBe(MANIFEST());
+    expect(existsSync(join(out, "manifests"))).toBe(false);
+  });
+
+  it("with --bucket, writes both after checking both downloads", async () => {
+    const b = bucket();
+    const out = tempDir("cloudpin-winget-");
+    await bumpInstallers({ version: "1.2.0", bucket: b, winget: out, date: "2026-12-03", force: false }, fakeFetch(SUMS("1.2.0")).impl);
+    expect(readManifestFile(b)).toBe(MANIFEST("1.2.0", ZIP_SHA));
+    expect(readWinget(out)).toEqual(renderWinget(templates(), VALUES));
   });
 });

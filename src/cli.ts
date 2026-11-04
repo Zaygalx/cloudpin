@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { cachedExec } from "./cache.js";
@@ -8,7 +7,7 @@ import { checkExitCode, formatCheckText, parseCheckArgs, runCheck } from "./chec
 import { doctorJson, formatDoctor, runDoctor } from "./doctor.js";
 import { explain, formatExplain } from "./explain.js";
 import { serve } from "./mcp.js";
-import { cloudpinHandler } from "./mcp-tools.js";
+import { cloudpinHandler, type DoctorHost } from "./mcp-tools.js";
 import { confirmProtected } from "./confirm.js";
 import { CONFIG_FILE, ConfigError, findConfig } from "./config.js";
 import { realExec, runInherited } from "./exec.js";
@@ -27,12 +26,14 @@ import {
   windowsRoot,
 } from "./install.js";
 import { runningInstallMethod } from "./install-method.js";
-import { cacheDir, findOnPath, isExecutableFile } from "./paths.js";
+import { cacheDir, findOnPath, isExecutableFile, probeWritable } from "./paths.js";
 import { shellInit } from "./shell-init.js";
 import { buildStatus, collectStatus } from "./status.js";
+import { parseSwitchArgs, runSwitch, switchUsage } from "./switch.js";
 import { checksForUpdates, fetchLatest, refreshIfStale, savedNotice, updateCheckAllowed } from "./update.js";
 import { useCommand } from "./use.js";
 import { providers } from "./providers/index.js";
+import { VERSION } from "./version.js";
 
 /** Exit code for a blocked command, distinct from the usual 1 and 2. */
 export const EXIT_BLOCKED = 3;
@@ -47,11 +48,16 @@ Usage:
                               Check every CLI pinned in the nearest .cloudpin.yml
                               (--only azure,aws: just these, each must be installed and logged in;
                               --json: the result as JSON, for CI)
+  cloudpin switch [--yes] [--json] [--only <clouds>]
+                              Switch each pinned CLI to its pinned account: shows the plan,
+                              asks once (--yes: don't ask), runs the commands, then checks again
   cloudpin status [--json]    Show each CLI's active account, the pins here, and installed hooks
-  cloudpin explain [--json] [--agent] -- <cmd...>
+  cloudpin explain [--json] [--agent] [--powershell] -- <cmd...>
                               What cloudpin would decide for a command, and why, without running it
-                              (one quoted argument is read as a full shell line; --agent: as an agent hook)
-  cloudpin mcp                Read-only MCP server for agents (stdio): cloudpin_status, cloudpin_check
+                              (one quoted argument is read as a full shell line, bash unless --powershell;
+                              --agent: as an agent hook)
+  cloudpin mcp                Read-only MCP server for agents (stdio): cloudpin_status, cloudpin_check,
+                              cloudpin_doctor
   cloudpin doctor [--json]    Check the whole setup (PATH, shell, hooks, pins, CLIs) and say what to fix
                               (--json is safe to paste in a bug report)
   cloudpin use [<env> | --clear]
@@ -148,6 +154,32 @@ async function check(args: string[]): Promise<number> {
   return checkExitCode(report);
 }
 
+async function switchCommand(args: string[]): Promise<number> {
+  const parsed = parseSwitchArgs(args);
+  if ("help" in parsed) {
+    console.log(switchUsage);
+    return 0;
+  }
+  if ("error" in parsed) {
+    console.error(`cloudpin switch: ${parsed.error}\n${switchUsage}`);
+    return 1;
+  }
+  // Like check: no identity cache, so the plan and the re-check ask each CLI afresh.
+  return runSwitch(process.cwd(), process.env, deps, parsed, {
+    isTTY: Boolean(process.stdin.isTTY && process.stderr.isTTY),
+    ask: async (question) => {
+      const rl = createInterface({ input: process.stdin, output: process.stderr });
+      try {
+        return await rl.question(question);
+      } finally {
+        rl.close();
+      }
+    },
+    out: (line) => console.log(line),
+    err: (line) => console.error(line),
+  });
+}
+
 /** A file's text, or null if it can't be read. */
 const readOrNull = (path: string): string | null => {
   try {
@@ -159,33 +191,32 @@ const readOrNull = (path: string): string | null => {
 
 const isDir = (path: string): boolean => statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
 
-const version =() => (createRequire(import.meta.url)("../package.json") as { version: string }).version;
+const version = () => VERSION;
 
 /** How this cloudpin was installed (an InstallMethod: npm, brew, scoop or a package manager), from the running script's path, real and as run. */
 const installedWith = runningInstallMethod;
 
-/** True if cloudpin can create and remove a file in `dir` (its own cache folder). */
-function writable(dir: string): boolean {
-  const probe = join(dir, `.cloudpin-doctor-${process.pid}`);
-  try {
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-    writeFileSync(probe, "");
-    rmSync(probe);
-    return true;
-  } catch {
-    return false;
-  }
-}
+/** What doctor learns about this cloudpin and machine, for `cloudpin doctor` and the MCP tool alike. */
+const doctorHost = (): DoctorHost => ({
+  platform: process.platform,
+  version: version(),
+  self: process.argv[1] ?? "",
+  install: installedWith(),
+  realpath: (p: string) => realpathSync(p),
+  node: process.versions.node,
+  onPath: (name: string) => onPath(name, process.env),
+  latest: () => fetchLatest(fetch, 3000),
+});
 
 /**
- * `explain [--json] [--agent] [--] <cmd...>`: one argument is a full shell line,
+ * `explain [--json] [--agent] [--powershell] [--] <cmd...>`: one argument is a full shell line,
  * several are one command's argv. Read-only; exit 0 whatever the verdict.
  */
 async function explainCommand(argv: string[]): Promise<number> {
-  // Only leading --json / --agent are cloudpin's; everything after is the command's.
+  // Only leading --json / --agent / --powershell are cloudpin's; everything after is the command's.
   const flags = new Set<string>();
   let i = 0;
-  while (argv[i] === "--json" || argv[i] === "--agent") flags.add(argv[i++]!);
+  while (argv[i] === "--json" || argv[i] === "--agent" || argv[i] === "--powershell") flags.add(argv[i++]!);
   if (argv[i] === "--") i++;
   const words = argv.slice(i);
   if (words.length === 0) {
@@ -194,28 +225,16 @@ async function explainCommand(argv: string[]): Promise<number> {
   }
   const command = words.length === 1 ? words[0]! : words;
   const mode = flags.has("--agent") ? "agent" : "shell";
-  const calls = await explain(command, { mode, cwd: process.cwd(), env: process.env }, deps);
+  const shell = flags.has("--powershell") ? "powershell" : "bash";
+  const calls = await explain(command, { mode, cwd: process.cwd(), env: process.env, shell }, deps);
   if (flags.has("--json")) console.log(JSON.stringify({ mode, calls }, null, 2));
   else for (const line of formatExplain(calls, process.env)) console.log(line);
   return 0;
 }
 
 async function doctor(flags: string[]): Promise<number> {
-  const d = {
-    guard: deps,
-    env: process.env,
-    cwd: process.cwd(),
-    platform: process.platform,
-    version: version(),
-    self: process.argv[1] ?? "",
-    install: installedWith(),
-    realpath: (p: string) => realpathSync(p),
-    node: process.versions.node,
-    read: readOrNull,
-    writable,
-    onPath: (name: string) => onPath(name, process.env),
-    latest: () => fetchLatest(fetch, 3000),
-  };
+  // The terminal doctor probes the cache folder by writing to it; the MCP tool never does (src/mcp-tools.ts).
+  const d = { guard: deps, env: process.env, cwd: process.cwd(), read: readOrNull, writable: probeWritable, ...doctorHost() };
   const checks = await runDoctor(d);
   if (flags.includes("--json")) console.log(JSON.stringify(doctorJson(checks, d), null, 2));
   else {
@@ -343,6 +362,8 @@ export async function main(argv: string[]): Promise<number> {
       return init(rest);
     case "check":
       return check(rest);
+    case "switch":
+      return switchCommand(rest);
     case "use": {
       const result = useCommand(rest, process.cwd(), process.env);
       for (const line of result.lines) (result.code === 0 ? console.log : console.error)(line);
@@ -365,7 +386,8 @@ export async function main(argv: string[]): Promise<number> {
       return explainCommand(rest);
     case "mcp": {
       // Fresh answers (no identity cache), like check and explain. stdout carries only JSON-RPC lines.
-      const handler = cloudpinHandler(deps, { cwd: process.cwd(), env: process.env, read: readOrNull, isDir }, version());
+      const ctx = { cwd: process.cwd(), env: process.env, read: readOrNull, isDir, doctor: doctorHost() };
+      const handler = cloudpinHandler(deps, ctx, version());
       await serve(handler, process.stdin, process.stdout);
       return 0;
     }

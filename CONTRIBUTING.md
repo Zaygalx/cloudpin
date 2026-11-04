@@ -50,7 +50,9 @@ What to pin: a stable ID (subscription ID, account ID, project ref), never a dis
 
 1. Its pin section in `src/config.ts` (`Pins` and `SCHEMA`), and in `src/init.ts` (`PIN_FIELDS`).
 2. `src/providers/<name>.ts` implementing `ProviderDef`: `isExempt`, `resolve`, `compare`, `switchHint`,
-   `statusCommand` and `cacheInputs`. Register it in `src/providers/index.ts`.
+   `statusCommand`, `cacheInputs` and `targetFlags` (every flag `resolve` reads, so a value only known when the
+   command runs gives "can't tell"; `test/hook-dynamic-values.test.ts` checks the list). Register it in
+   `src/providers/index.ts`.
 3. Its read-only rules in `src/readonly.ts` (TypeScript will tell you the entry is missing).
 4. Tests first, in `test/<name>.test.ts`: a fake `Exec` (see `test/github.test.ts`) and `tempDir()` from
    `test/tmp.ts` for folders. Cover each source of the account and their order, logged out, a bad token (named,
@@ -62,7 +64,11 @@ What to pin: a stable ID (subscription ID, account ID, project ref), never a dis
 
 `resolve` must return the identity *the specific command* would use, so flags such as `--profile` and
 environment variables count. When it can't tell, it returns an error, and cloudpin stops the command with that
-reason. `cacheInputs` must list every variable and file that can change the answer of a CLI call that `resolve` makes.
+reason. `cacheInputs` must list every variable and file that can change the answer of a CLI call that `resolve` makes,
+and its `env` every variable that can change `resolve`'s own answer: when a command line sets one of those from
+something cloudpin can't read in advance (`$(...)`), the command is stopped. On Windows, `resolve` gets every
+variable name in upper case, as the CLIs read them there. Both get the platform the command runs on (`platform` in
+`resolve`'s context, `cacheInputs`' second argument): read it there, never `process.platform`, so tests can set it.
 
 ## Pull requests
 

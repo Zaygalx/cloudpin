@@ -1,12 +1,23 @@
 import { resolve } from "node:path";
-import { formatBlock, formatConfirm } from "../format.js";
-import { commandName, guard, type GuardDeps } from "../guard.js";
-import { envFor, findInvocations } from "../shellwords.js";
+import { formatBlock, formatConfirm, maskArgv } from "../format.js";
+import { commandName, foldEnvNames, guard, type GuardDeps } from "../guard.js";
+import { type Dialect, findInvocations, type Invocation } from "../shellwords.js";
+import { parseSwitchArgs } from "../switch.js";
+import { envFor, USER_ONLY_VARS } from "../user-env.js";
+import { isDynamic } from "../word-expansion.js";
+
+/** A shell command an agent is about to run. */
+export interface AgentCall {
+  command: string;
+  cwd: string;
+  /** The shell that runs it, when the payload says (#159); otherwise it depends on the platform. */
+  shell?: Dialect;
+}
 
 /** How one agent hands a shell command to its hook and reads the answer. */
 export interface AgentHook {
   /** Extracts the shell command and its folder, or null if the call is not a shell command. */
-  parse(input: unknown): { command: string; cwd: string } | null;
+  parse(input: unknown): AgentCall | null;
   /** Output that blocks the command with `reason`. */
   deny(reason: string): string;
   /**
@@ -24,7 +35,8 @@ const str = (v: unknown): string | undefined => (typeof v === "string" ? v : und
 
 // Claude Code (code.claude.com/docs/en/hooks) and Codex (learn.chatgpt.com/docs/hooks)
 // share the PreToolUse protocol: tool_input.command in, hookSpecificOutput out.
-function preToolUse(tools: string[], canAsk: boolean): AgentHook {
+// `shells` maps a tool name to the shell that runs it, when the name says (#159).
+function preToolUse(shells: Record<string, Dialect | undefined>, canAsk: boolean): AgentHook {
   const decide = (permissionDecision: "deny" | "ask", reason: string) =>
     JSON.stringify({
       hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason: reason },
@@ -33,8 +45,10 @@ function preToolUse(tools: string[], canAsk: boolean): AgentHook {
     parse(input) {
       const i = obj(input);
       const command = str(obj(i.tool_input).command);
-      if (!tools.includes(str(i.tool_name) ?? "") || command === undefined) return null;
-      return { command, cwd: str(i.cwd) ?? process.cwd() };
+      const tool = str(i.tool_name) ?? "";
+      if (!Object.hasOwn(shells, tool) || command === undefined) return null;
+      const shell = shells[tool];
+      return { command, cwd: str(i.cwd) ?? process.cwd(), ...(shell ? { shell } : {}) };
     },
     deny: (reason) => decide("deny", reason),
     ...(canAsk ? { ask: (reason: string) => decide("ask", reason) } : {}),
@@ -45,18 +59,25 @@ function preToolUse(tools: string[], canAsk: boolean): AgentHook {
 }
 
 export const AGENTS = {
-  // Claude Code: "ask" prompts the user, showing the reason.
-  claude: preToolUse(["Bash", "PowerShell"], true),
+  // Claude Code: "ask" prompts the user, showing the reason. Its Bash tool runs
+  // bash (Git Bash on Windows); its PowerShell tool, PowerShell
+  // (code.claude.com/docs/en/hooks, "PowerShell").
+  claude: preToolUse({ Bash: "bash", PowerShell: "powershell" }, true),
   // Codex parses "ask" but does not support it yet, and an unsupported answer
   // lets the tool call continue (learn.chatgpt.com/docs/hooks), so it denies.
-  codex: preToolUse(["Bash", "PowerShell"], false),
+  // It names every shell call "Bash" (codex-rs exec_command.rs, HookToolName::bash)
+  // and runs it in the user's shell, PowerShell by default on Windows
+  // (codex-rs shell_detect.rs, default_user_shell_from_path), so the name says nothing.
+  codex: preToolUse({ Bash: undefined, PowerShell: "powershell" }, false),
 
   // GitHub Copilot CLI (docs.github.com, hooks configuration): toolArgs is a
   // JSON-encoded string in the documented example; empty output = default.
+  // Its tools are "bash" (Unix) and "powershell" (Windows).
   copilot: {
     parse(input) {
       const i = obj(input);
-      if (!["bash", "powershell"].includes(str(i.toolName) ?? "")) return null;
+      const shell = str(i.toolName);
+      if (shell !== "bash" && shell !== "powershell") return null;
       let args: unknown = i.toolArgs;
       if (typeof args === "string") {
         try {
@@ -66,7 +87,7 @@ export const AGENTS = {
         }
       }
       const command = str(obj(args).command);
-      return command === undefined ? null : { command, cwd: str(i.cwd) ?? process.cwd() };
+      return command === undefined ? null : { command, cwd: str(i.cwd) ?? process.cwd(), shell };
     },
     deny: (reason) => JSON.stringify({ permissionDecision: "deny", permissionDecisionReason: reason }),
     // permissionDecision accepts "allow", "deny" and "ask"; the cloud agent,
@@ -159,6 +180,73 @@ function useConfirmation(args: string[]): Confirmation {
   };
 }
 
+/** A value as a POSIX shell word: bare when safe, else single-quoted. */
+const shellQuote = (value: string) => (/^[\w./:@%+,-]+$/.test(value) ? value : `'${value.split("'").join("'\\''")}'`);
+
+const SWITCH_DENY = "This agent's hook cannot ask the user to confirm, so cloudpin blocks it.\n  Do not work around this; ask the human to run `cloudpin switch`.";
+
+/**
+ * `cloudpin switch` (#14) changes the active account of the user's CLIs, for every terminal, so the human
+ * decides, as for `cloudpin use <env>`. The reason names the pins it would switch to, read from the pin file
+ * without running any CLI, so the question comes fast. `--yes` only skips cloudpin's own prompt. Unlike guard,
+ * it reads the pins with the environment the command will really have, user-only variables set on the line
+ * included (the human runs it, so they count), and shows those variables in the command, so the human sees what
+ * they approve. Names are folded as guard folds them on Windows (#136).
+ */
+function switchConfirmation(args: string[], deps: GuardDeps, cwd: string, base: NodeJS.ProcessEnv, inv: Invocation): Confirmation {
+  const platform = deps.platform ?? process.platform;
+  const before = foldEnvNames(base, platform).env;
+  const env = foldEnvNames(envFor(base, inv, { platform }), platform).env;
+  const prefix = USER_ONLY_VARS.flatMap((name) => {
+    if (env[name] === before[name]) return [];
+    return env[name] === undefined ? [`unset ${name};`] : [`${name}=${shellQuote(env[name]!)}`];
+  });
+  const command = [...prefix, ...maskArgv(["cloudpin", ...args])].join(" ");
+  let target = "";
+  try {
+    const config = deps.findConfig(cwd, env);
+    if (config) {
+      const parsed = parseSwitchArgs(args.slice(1));
+      const only = "only" in parsed && parsed.only ? parsed.only.map((n) => n.trim().toLowerCase()) : undefined;
+      const pins = Object.entries(config.pins)
+        .filter(([name, pin]) => pin && (!only || only.includes(name)))
+        .map(([name, pin]) => `${name} ${Object.entries(pin as Record<string, string>).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+      const environment = config.environment ? ` (environment "${config.environment.name}")` : "";
+      target = `, to the accounts pinned in ${config.path}${environment}${pins.length > 0 ? `: ${pins.join("; ")}` : ""}`;
+    }
+  } catch {
+    // An unreadable pin file: ask without naming the pins.
+  }
+  const what = `cloudpin: \`${command}\` switches the active accounts of your cloud CLIs, for every terminal and not just this one${target}`;
+  return {
+    ask: `${what}. It runs commands such as az account set or gh auth switch, so it needs your OK.`,
+    deny: `${what}.\n  ${SWITCH_DENY}`,
+  };
+}
+
+/** A cloudpin call whose subcommand is only known when the line runs: it may be `cloudpin switch` or `use`. */
+function unknownSubcommand(args: string[]): Confirmation {
+  const what = `cloudpin: cloudpin can't read in advance which cloudpin command \`${maskArgv(["cloudpin", ...args]).join(" ")}\` runs; it may be cloudpin switch or cloudpin use, which change the accounts your CLIs act on`;
+  return {
+    ask: `${what}, so it needs your OK.`,
+    deny: `${what}.\n  ${SWITCH_DENY}`,
+  };
+}
+
+/** What a call to cloudpin itself needs the user's OK for, if anything. */
+export function cloudpinConfirmation(inv: Invocation, deps: GuardDeps, cwd: string, base: NodeJS.ProcessEnv): Confirmation | undefined {
+  // npm keeps the words after its `--` for the command: `npm exec cloudpin -- switch` runs `cloudpin switch`.
+  const args = inv.args[0] === "--" ? inv.args.slice(1) : inv.args;
+  const first = args[0];
+  if (first === undefined) return undefined;
+  if (isDynamic(first)) return unknownSubcommand(args);
+  // A bare `cloudpin use` only shows the current environment.
+  if (first === "use") return args.length > 1 ? useConfirmation(args) : undefined;
+  // `parseSwitchArgs` is what the command runs on: help is only where it really stops on it (#146).
+  if (first === "switch" && !("help" in parseSwitchArgs(args.slice(1)))) return switchConfirmation(args, deps, cwd, base, inv);
+  return undefined;
+}
+
 export type AgentName = keyof typeof AGENTS;
 
 /**
@@ -173,6 +261,7 @@ export async function runHook(
   deps: GuardDeps,
   env: NodeJS.ProcessEnv,
   deadlineMs = HOOK_DEADLINE_MS,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<string> {
   // An agent runs the command when its hook fails or times out (Claude Code
   // and Codex treat a non-zero exit other than 2 as non-blocking), so every
@@ -191,7 +280,7 @@ export async function runHook(
     );
   });
   try {
-    return await Promise.race([checkCommand(agent, stdin, deps, env), deadline]);
+    return await Promise.race([checkCommand(agent, stdin, deps, env, platform), deadline]);
   } catch (err) {
     const reason = (err as Error)?.message?.split("\n")[0]?.slice(0, 200) ?? String(err);
     return agent.deny(
@@ -203,6 +292,19 @@ export async function runHook(
   }
 }
 
+/**
+ * The guarded calls in an agent's command, read with the rules of the shell that runs it (#159). When the
+ * payload doesn't name the shell, Windows may run it in PowerShell or in bash, so it is read both ways and
+ * every call either reading finds is checked; elsewhere it is bash.
+ */
+function agentCalls(call: AgentCall, bins: string[], env: NodeJS.ProcessEnv, platform: NodeJS.Platform): Invocation[] {
+  const shells: Dialect[] = call.shell ? [call.shell] : platform === "win32" ? ["bash", "powershell"] : ["bash"];
+  const seen = new Set<string>();
+  return shells
+    .flatMap((shell) => findInvocations(call.command, bins, call.cwd, env, shell))
+    .filter((inv) => !seen.has(JSON.stringify(inv)) && seen.add(JSON.stringify(inv)));
+}
+
 // Below the 60-second timeout `install-hook` writes for every agent, so cloudpin
 // answers before the agent gives up on it.
 const HOOK_DEADLINE_MS = 45_000;
@@ -212,8 +314,9 @@ async function checkCommand(
   stdin: string,
   deps: GuardDeps,
   env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
 ): Promise<string> {
-  let call: { command: string; cwd: string } | null;
+  let call: AgentCall | null;
   try {
     call = agent.parse(JSON.parse(stdin));
   } catch {
@@ -224,21 +327,18 @@ async function checkCommand(
   const bins = [...deps.providers.flatMap((p) => p.bins), "cloudpin"];
   const blocks: string[] = [];
   const confirmations: Confirmation[] = [];
-  for (let inv of findInvocations(call.command, bins, call.cwd)) {
+  for (const inv of agentCalls(call, bins, env, platform)) {
+    // findInvocations reads what `cloudpin exec` starts as the call it is, so any other cloudpin call stays here.
     if (commandName(inv.bin) === "cloudpin") {
-      // A bare `cloudpin use` only shows the current environment.
-      if (inv.args[0] === "use" && inv.args.length > 1) confirmations.push(useConfirmation(inv.args));
-      // `cloudpin exec` checks in shell mode, where CLOUDPIN_SKIP works, so
-      // the hook checks the wrapped command itself, as the agent's.
-      const wrapped = inv.args[0] === "exec" ? inv.args.slice(inv.args[1] === "--" ? 2 : 1) : [];
-      if (wrapped.length === 0) continue;
-      inv = { ...inv, bin: wrapped[0]!, args: wrapped.slice(1) };
+      const confirmation = cloudpinConfirmation(inv, deps, inv.cwd ?? call.cwd, env);
+      if (confirmation) confirmations.push(confirmation);
+      continue;
     }
     const verdict = await guard(
       {
         bin: inv.bin,
         args: inv.args,
-        env: envFor(env, inv, { agent: true }),
+        env: envFor(env, inv, { agent: true, platform: deps.platform }),
         cwd: inv.cwd ?? call.cwd,
         mode: "agent",
       },

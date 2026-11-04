@@ -1,4 +1,4 @@
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, constants, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, posix, win32 } from "node:path";
 
@@ -84,4 +84,20 @@ export function cacheDir(env: NodeJS.ProcessEnv = process.env): string {
   if (process.platform === "win32" && env.LOCALAPPDATA) return join(env.LOCALAPPDATA, "cloudpin", "cache");
   if (process.platform === "darwin") return join(home(env), "Library", "Caches", "cloudpin");
   return join(env.XDG_CACHE_HOME ?? join(home(env), ".cache"), "cloudpin");
+}
+
+/**
+ * True if cloudpin can create and remove a file in `dir` (its own cache folder). It writes: it creates `dir` and a
+ * probe file, so only `cloudpin doctor` in a terminal uses it, never the MCP server (#15).
+ */
+export function probeWritable(dir: string): boolean {
+  const probe = join(dir, `.cloudpin-doctor-${process.pid}`);
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    writeFileSync(probe, "");
+    rmSync(probe);
+    return true;
+  } catch {
+    return false;
+  }
 }

@@ -95,6 +95,8 @@ github:
       ["volta", "update it: volta install cloudpin"],
       ["yarn", "update it: yarn global add cloudpin"],
       ["bun", "update it: bun add --global cloudpin@latest"],
+      ["winget", "update it: winget upgrade paureis.cloudpin"],
+      ["exe", "update it: download the latest cloudpin-X.Y.Z-win-x64.zip from https://github.com/paureis/cloudpin/releases"],
     ])("names the update command for a %s install", (method, command) => {
       running.method = method;
       const got = message("terraform:\n  workspace: prod\n");

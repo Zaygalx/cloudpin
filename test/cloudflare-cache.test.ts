@@ -23,7 +23,10 @@ function folder(files: Record<string, string>) {
   return root;
 }
 
-const resolve = (cwd: string, env: NodeJS.ProcessEnv = {}) => cloudflare.resolve({ args: ["deploy"], env, cwd, bin: "wrangler" }, exec);
+// An empty home folder, so no test reads the real Wrangler auth profiles (#103).
+const noProfiles = tempDir("cloudpin-wrangler-home-");
+const resolve = (cwd: string, env: NodeJS.ProcessEnv = {}) =>
+  cloudflare.resolve({ args: ["deploy"], env: { HOME: noProfiles, USERPROFILE: noProfiles, ...env }, cwd, bin: "wrangler" }, exec);
 const cacheFile = (id: string) => JSON.stringify({ account: { id, name: "Cached" } });
 const fromWhoami = { identity: { account: A }, source: "the only account the credentials can see" };
 
