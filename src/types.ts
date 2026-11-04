@@ -49,6 +49,8 @@ export type Resolution =
        * doctor only note it for an unpinned one.
        */
       noTarget?: boolean;
+      /** What to do about it, when not the provider's `statusCommand`. */
+      fix?: string;
     };
 
 export interface ProviderDef<P extends Provider = Provider> {

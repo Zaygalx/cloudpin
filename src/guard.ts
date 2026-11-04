@@ -207,7 +207,7 @@ export async function guard(req: GuardRequest, deps: GuardDeps, trace: Trace = {
     case "error":
       // Fail closed: if we cannot tell who the command will act as, we cannot
       // promise it is the right account.
-      return { ...base, uncertain: true, problems: [res.message], fix: provider.statusCommand };
+      return { ...base, uncertain: true, problems: [res.message], fix: res.fix ?? provider.statusCommand };
     case "identity": {
       // A pinned field the command's identity can't be read for (#165), e.g. gcloud's account with an access token.
       const unread = Object.entries(res.unknown ?? {}).filter(([field]) => (pin as Record<string, string>)[field]);
