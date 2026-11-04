@@ -45,6 +45,10 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   built with the Agent SDK, in docs/agent-sdk.md.
 - **kuberc alias groups** ([#140](https://github.com/paureis/cloudpin/issues/140)): done. A kuberc alias with a short
   flag group is read as kubectl reads it, and a short flag's value that looks like a flag stays a value.
+- **Vercel folder arguments** ([#147](https://github.com/paureis/cloudpin/issues/147)): done. `vercel deploy <dir>`,
+  `pull <dir>` and `dev <dir>` are checked against the link of the folder they name.
+- **Exemption leftovers** ([#153](https://github.com/paureis/cloudpin/issues/153)): plugins given `--help`, value flags
+  that take it and Wrangler's `--no-help` are done; kubectl per-command long values and `vercel dev` services remain.
 - **Windows case gaps** ([#136](https://github.com/paureis/cloudpin/issues/136)): done. cloudpin's own variables
   and the read-only check read names without regard to case (Wrangler's per-platform login folder came with #103).
 

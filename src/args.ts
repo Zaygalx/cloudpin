@@ -61,6 +61,24 @@ export function hasBareFlag(args: string[], names: string[]): boolean {
   return false;
 }
 
+/**
+ * hasBareFlag for CLIs that parse with spf13/pflag (gh, kubectl, helm): pflag gives a flag that
+ * takes a value the next word, whatever it is (flag.go parseLongArg, parseSingleShortArg), so
+ * `gh secret set X --body --help` sets the body to "--help" and runs. Which flags take a value
+ * depends on the command, so an occurrence right after any `-x` or `--x` word without "=" doesn't
+ * count (#153). That checks `... --web --help` too, a help request that only costs a check.
+ */
+export function hasPflagHelp(args: string[], names: string[]): boolean {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--") return false;
+    const prev = args[i - 1];
+    const mayTakeIt = prev !== undefined && prev.length > 1 && prev.startsWith("-") && !prev.includes("=");
+    if (names.includes(arg) && !mayTakeIt) return true;
+  }
+  return false;
+}
+
 export function hasAnyFlag(args: string[], names: string[]): boolean {
   return args.some((a) => names.includes(a) || names.some((n) => a.startsWith(`${n}=`)));
 }

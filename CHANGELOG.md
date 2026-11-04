@@ -49,6 +49,12 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 
 ### Fixed
 
+- Help no longer exempts a command that runs anyway (#153): a kubectl or helm plugin given `--help` (it gets the flag
+  as an argument), a value flag that takes it (`gh secret set X --body --help`), and Wrangler's `--help false` and
+  `--no-help`. `gh ... --web --help` is checked as well, at the cost of one check.
+- Vercel: `vercel deploy <dir>`, a bare `vercel <dir>`, `vercel pull <dir>` and `vercel dev <dir>` are checked against
+  the link of the folder they name, not the one they run in (#147). A folder known only when the command runs
+  (`vercel deploy "$D"`) stops as "can't tell".
 - kubectl: a kuberc alias whose arguments hold a short flag group (`-itnprod`, `-iA`, `-is <url>`) is read as the
   group it is, and a short flag's value is the next word whole, so `kubectl logs pod -c -n x` is not namespace x. The
   user's own short flags after an alias follow the alias command's letters (#140).

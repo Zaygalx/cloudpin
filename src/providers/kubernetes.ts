@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { parse, YAMLParseError } from "yaml";
-import { commandWords as wordsAfterFlags, hasBareFlag } from "../args.js";
+import { commandWords as wordsAfterFlags, hasBareFlag, hasPflagHelp } from "../args.js";
 import { home } from "../paths.js";
 import type { ProviderDef, Resolution } from "../types.js";
 
@@ -23,6 +23,42 @@ const HELM_EXEMPT = new Set([
   "create", "dependency", "dep", "env", "lint", "package", "plugin", "pull", "fetch", "push", "registry",
   "repo", "search", "show", "inspect", "template", "verify", "version", "help", "completion",
 ]);
+
+// Built-in commands, where --help prints the help (#153). Any other first word is a plugin, which
+// gets --help as an argument: kubectl runs kubectl-<name> from PATH when the first word is not a
+// command (kubectl 1.36.1 pkg/cmd/cmd.go NewDefaultKubectlCommandWithArgs, pkg/cmd/plugin.go
+// HandlePluginCommand), and helm plugins are commands with DisableFlagParsing (helm v3.22.1
+// cmd/helm/load_plugins.go, v4.3.1 pkg/cmd/load_plugins.go). Lists: `kubectl --help` 1.36.1 and
+// cmd.go, plus alpha, options and cobra's help (kubectl has no top-level aliases); helm v3.22.1
+// cmd/helm/root.go and v4.3.1 pkg/cmd/root.go with each command's aliases, plus help.
+const KUBECTL_BUILTIN = new Set([
+  "create", "expose", "run", "set", "explain", "get", "edit", "delete", "rollout", "scale", "autoscale", "certificate",
+  "cluster-info", "top", "cordon", "uncordon", "drain", "taint", "describe", "logs", "attach", "exec", "port-forward",
+  "proxy", "cp", "auth", "debug", "events", "diff", "apply", "patch", "replace", "wait", "kustomize", "label",
+  "annotate", "completion", "api-resources", "api-versions", "config", "kuberc", "plugin", "version", "alpha",
+  "options", "help",
+]);
+// `kubectl create <x>` runs kubectl-create-<x> when <x> is not one of these names (aliases such as
+// `cm` don't count) and comes right after `create` (IsSubcommandPluginAllowed, cmd.go).
+const KUBECTL_CREATE = new Set([
+  "clusterrole", "clusterrolebinding", "configmap", "cronjob", "deployment", "ingress", "job", "namespace",
+  "poddisruptionbudget", "priorityclass", "quota", "role", "rolebinding", "secret", "service", "serviceaccount", "token",
+]);
+const HELM_BUILTIN = new Set([
+  "create", "dependency", "dep", "dependencies", "pull", "fetch", "show", "inspect", "lint", "package", "repo",
+  "search", "verify", "get", "history", "hist", "install", "list", "ls", "test", "rollback", "status", "template",
+  "uninstall", "del", "delete", "un", "upgrade", "completion", "env", "plugin", "version", "docs", "registry", "push",
+  "help",
+]);
+
+/** Whether --help prints the help rather than going to a plugin (#153). */
+function helpStops(args: string[], bin: string | undefined, first: string | undefined): boolean {
+  if (first === undefined) return true;
+  if (bin === "helm") return HELM_BUILTIN.has(first);
+  if (!KUBECTL_BUILTIN.has(first)) return false;
+  const sub = args[0] === "create" ? args[1] : undefined;
+  return sub === undefined || sub.startsWith("-") || KUBECTL_CREATE.has(sub);
+}
 
 /**
  * A flag's last value. Long flags as `--name value` / `--name=value`; one-letter
@@ -330,8 +366,8 @@ export const kubernetes: ProviderDef<"kubernetes"> = {
   },
 
   isExempt(args, bin) {
-    if (hasBareFlag(args, ["--help", "-h"])) return true;
     const [first] = commandWords(args);
+    if (hasPflagHelp(args, ["--help", "-h"]) && helpStops(args, bin, first)) return true;
     if (first === undefined) return hasBareFlag(args, ["--version"]);
     return (bin === "helm" ? HELM_EXEMPT : KUBECTL_EXEMPT).has(first);
   },

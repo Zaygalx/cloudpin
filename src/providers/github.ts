@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { flagValue, hasBareFlag, leadingWords } from "../args.js";
+import { flagValue, hasBareFlag, hasPflagHelp, leadingWords } from "../args.js";
 import { appData, home } from "../paths.js";
 import type { ProviderDef } from "../types.js";
 
@@ -57,8 +57,9 @@ export const github: ProviderDef<"github"> = {
       if (second === undefined && args.slice(1).some((a) => !a.startsWith("-"))) return false;
       if (second !== undefined && NOT_HELP.has(second)) return false;
     }
-    if (hasBareFlag(args, ["--help"])) return true;
-    return hasBareFlag(args, ["-h"]) && !H_NOT_HELP.has(`${first} ${second}`);
+    // A value flag right before --help takes it as its value (#153).
+    if (hasPflagHelp(args, ["--help"])) return true;
+    return hasPflagHelp(args, ["-h"]) && !H_NOT_HELP.has(`${first} ${second}`);
   },
 
   async resolve({ args, env }, exec) {
