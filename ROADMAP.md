@@ -27,8 +27,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   `--profile`, or in a folder bound by `wrangler auth activate`, is checked against that profile's login.
 - **Antigravity and Copilot CLI hook shells on Windows** ([#110](https://github.com/paureis/cloudpin/issues/110)):
   find which shell each one starts hook commands with, and give Antigravity the Windows form from #108 if it needs it.
-- **Threat model** ([#84](https://github.com/paureis/cloudpin/issues/84)): what cloudpin protects against and what it
-  doesn't, in THREAT_MODEL.md. Moved from 1.2.0 on 2026-10-18 (waiting for an outside review).
+- **Threat model** ([#84](https://github.com/paureis/cloudpin/issues/84)): done. What cloudpin protects against and what
+  it doesn't, in THREAT_MODEL.md.
 - **MCP: `cloudpin_switch_plan` and `cloudpin_doctor` tools** ([#112](https://github.com/paureis/cloudpin/issues/112)):
   two more read-only tools: the commands you would run to move each CLI to the pinned account (from `cloudpin
   switch`, nothing run), and `cloudpin doctor`'s report, so an agent can say why the hook isn't guarding.
@@ -43,6 +43,13 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   and the MCP check tool mask tokens and passwords from the command line.
 - **Claude Agent SDK page** ([#142](https://github.com/paureis/cloudpin/issues/142)): done. How to guard an app
   built with the Agent SDK, in docs/agent-sdk.md.
+- **kuberc alias groups** ([#140](https://github.com/paureis/cloudpin/issues/140)): done. A kuberc alias with a short
+  flag group is read as kubectl reads it, and a short flag's value that looks like a flag stays a value.
+- **Vercel folder arguments** ([#147](https://github.com/paureis/cloudpin/issues/147)): done. `vercel deploy <dir>`,
+  `pull <dir>` and `dev <dir>` are checked against the link of the folder they name.
+- **Exemption leftovers** ([#153](https://github.com/paureis/cloudpin/issues/153)): plugins given `--help`, value flags
+  that take it and Wrangler's `--no-help` are done; kubectl per-command long values and `vercel dev` services remain.
+- **Vercel `-y` in a group and `teams change`** ([#148](https://github.com/paureis/cloudpin/issues/148)): done.
 - **Windows case gaps** ([#136](https://github.com/paureis/cloudpin/issues/136)): done. cloudpin's own variables
   and the read-only check read names without regard to case (Wrangler's per-platform login folder came with #103).
 

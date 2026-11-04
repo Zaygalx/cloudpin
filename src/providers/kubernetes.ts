@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { parse, YAMLParseError } from "yaml";
-import { commandWords as wordsAfterFlags, hasBareFlag } from "../args.js";
+import { commandWords as wordsAfterFlags, hasBareFlag, hasPflagHelp } from "../args.js";
 import { home } from "../paths.js";
 import type { ProviderDef, Resolution } from "../types.js";
 
@@ -23,6 +23,42 @@ const HELM_EXEMPT = new Set([
   "create", "dependency", "dep", "env", "lint", "package", "plugin", "pull", "fetch", "push", "registry",
   "repo", "search", "show", "inspect", "template", "verify", "version", "help", "completion",
 ]);
+
+// Built-in commands, where --help prints the help (#153). Any other first word is a plugin, which
+// gets --help as an argument: kubectl runs kubectl-<name> from PATH when the first word is not a
+// command (kubectl 1.36.1 pkg/cmd/cmd.go NewDefaultKubectlCommandWithArgs, pkg/cmd/plugin.go
+// HandlePluginCommand), and helm plugins are commands with DisableFlagParsing (helm v3.22.1
+// cmd/helm/load_plugins.go, v4.3.1 pkg/cmd/load_plugins.go). Lists: `kubectl --help` 1.36.1 and
+// cmd.go, plus alpha, options and cobra's help (kubectl has no top-level aliases); helm v3.22.1
+// cmd/helm/root.go and v4.3.1 pkg/cmd/root.go with each command's aliases, plus help.
+const KUBECTL_BUILTIN = new Set([
+  "create", "expose", "run", "set", "explain", "get", "edit", "delete", "rollout", "scale", "autoscale", "certificate",
+  "cluster-info", "top", "cordon", "uncordon", "drain", "taint", "describe", "logs", "attach", "exec", "port-forward",
+  "proxy", "cp", "auth", "debug", "events", "diff", "apply", "patch", "replace", "wait", "kustomize", "label",
+  "annotate", "completion", "api-resources", "api-versions", "config", "kuberc", "plugin", "version", "alpha",
+  "options", "help",
+]);
+// `kubectl create <x>` runs kubectl-create-<x> when <x> is not one of these names (aliases such as
+// `cm` don't count) and comes right after `create` (IsSubcommandPluginAllowed, cmd.go).
+const KUBECTL_CREATE = new Set([
+  "clusterrole", "clusterrolebinding", "configmap", "cronjob", "deployment", "ingress", "job", "namespace",
+  "poddisruptionbudget", "priorityclass", "quota", "role", "rolebinding", "secret", "service", "serviceaccount", "token",
+]);
+const HELM_BUILTIN = new Set([
+  "create", "dependency", "dep", "dependencies", "pull", "fetch", "show", "inspect", "lint", "package", "repo",
+  "search", "verify", "get", "history", "hist", "install", "list", "ls", "test", "rollback", "status", "template",
+  "uninstall", "del", "delete", "un", "upgrade", "completion", "env", "plugin", "version", "docs", "registry", "push",
+  "help",
+]);
+
+/** Whether --help prints the help rather than going to a plugin (#153). */
+function helpStops(args: string[], bin: string | undefined, first: string | undefined): boolean {
+  if (first === undefined) return true;
+  if (bin === "helm") return HELM_BUILTIN.has(first);
+  if (!KUBECTL_BUILTIN.has(first)) return false;
+  const sub = args[0] === "create" ? args[1] : undefined;
+  return sub === undefined || sub.startsWith("-") || KUBECTL_CREATE.has(sub);
+}
 
 /**
  * A flag's last value. Long flags as `--name value` / `--name=value`; one-letter
@@ -78,17 +114,31 @@ function shortLetters(bin: string | undefined, command: string | undefined) {
 
 /**
  * The arguments with each short flag group split as pflag reads it, so `-itn prod` becomes
- * `-i -t -n prod` and `flag` and `allNamespaces` see its namespace. A group whose letters
- * cloudpin doesn't all know, when a letter after the unknown one could pick the target, is
- * returned as a reason instead. Only the letter is named: a word may hold a value.
+ * `-i -t -n=prod` and `flag` and `allNamespaces` see its namespace. A value taken from the next
+ * word is joined to its flag with `=`, because pflag gives it that word whatever it holds:
+ * `-c -n x` is the container "-n" (`-c=-n`), and `-c --` doesn't end the flags. The same goes for
+ * the global long flags in VALUE_FLAGS (`--namespace -n` is `--namespace=-n`); other long flags
+ * are kubectl's per-command ones, too many to list, so their value is left as it is. A group
+ * whose letters cloudpin doesn't all know, when a letter after the unknown one could pick the
+ * target, is returned as a reason instead. Only the letter is named: a word may hold a value.
+ * `command` picks the letter table; it is the alias's command for a kuberc alias.
  */
-function splitShortGroups(args: string[], bin: string | undefined): string[] | { error: string } {
-  const { targets, bool, value } = shortLetters(bin, commandWords(args)[0]);
+function splitShortGroups(
+  args: string[],
+  bin: string | undefined,
+  command = commandWords(args)[0],
+): string[] | { error: string } {
+  const { targets, bool, value } = shortLetters(bin, command);
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--") return [...out, ...args.slice(i)];
-    if (arg.length <= 2 || arg[0] !== "-" || arg[1] === "-") {
+    if (arg.startsWith("--")) {
+      out.push(VALUE_FLAGS.has(arg) && i + 1 < args.length ? `${arg}=${args[++i]}` : arg);
+      continue;
+    }
+    // pflag reads a lone `-` as an argument (parseArgs).
+    if (arg.length < 2 || arg[0] !== "-") {
       out.push(arg);
       continue;
     }
@@ -104,9 +154,10 @@ function splitShortGroups(args: string[], bin: string | undefined): string[] | {
           error: `cloudpin doesn't know ${bin ?? "kubectl"}'s flag -${letter}, so it can't tell whether the letters after it in the same word pick the namespace or server`,
         };
       }
-      // A value letter (or a boolean given `=value`) takes the rest of the word.
-      out.push(`-${letter}${rest}`);
-      if (rest === "" && value.includes(letter) && i + 1 < args.length) out.push(args[++i]!);
+      // A value letter (or a boolean given `=value`) takes the rest of the word, or the next
+      // word when it is the last letter. With no next word pflag fails ("flag needs an argument").
+      if (rest === "" && value.includes(letter) && i + 1 < args.length) out.push(`-${letter}=${args[++i]}`);
+      else out.push(`-${letter}${rest}`);
       break;
     }
   }
@@ -190,16 +241,34 @@ function selectors(bin: string | undefined, args: string[], env: NodeJS.ProcessE
 // Options that pick the cluster or namespace, as kuberc names them (flag names without dashes).
 const TARGET_OPTIONS = new Set(["namespace", "n", "context", "cluster", "server", "s", "kubeconfig", "user", "all-namespaces", "A"]);
 
-function setsTarget(options: unknown, extraArgs: unknown[]): string | undefined {
+function setsTarget(options: unknown): string | undefined {
   for (const option of Array.isArray(options) ? options : []) {
     const name = str(map(option).name);
     if (name && TARGET_OPTIONS.has(name)) return name;
   }
-  for (const arg of extraArgs) {
-    if (typeof arg !== "string" || !arg.startsWith("-")) continue;
-    // "--context=prod" -> "context"; "-nweb" or "-n" -> "n".
-    const name = arg.startsWith("--") ? arg.slice(2).split("=")[0]! : arg.slice(1, 2);
-    if (TARGET_OPTIONS.has(name)) return name;
+  return undefined;
+}
+
+const words = (v: unknown): string[] => (Array.isArray(v) ? v.filter((w): w is string => typeof w === "string") : []);
+
+/**
+ * The target option an alias's own arguments set, or why cloudpin can't tell. kubectl puts
+ * prependArgs right after the alias name and appendArgs at the end, with the user's words
+ * between them (kubernetes.io/docs/reference/kubectl/kuberc/; kubectl pkg/kuberc applyAliases),
+ * so each list is split on its own, with the letters of the alias's command (#140).
+ */
+function aliasArgsTarget(command: string | undefined, prepend: string[], append: string[]): string | { error: string } | undefined {
+  for (const list of [prepend, append]) {
+    const split = splitShortGroups(list, "kubectl", command);
+    if (!Array.isArray(split)) return split;
+    for (const arg of split) {
+      // After `--` the words are arguments, and so is everything kubectl appends after it.
+      if (arg === "--") return undefined;
+      if (!arg.startsWith("-") || arg === "-") continue;
+      // "--context=prod" -> "context"; "-n=web", "-nweb" or "-A" -> the letter.
+      const name = arg.startsWith("--") ? arg.slice(2).split("=")[0]! : arg.slice(1, 2);
+      if (TARGET_OPTIONS.has(name)) return name;
+    }
   }
   return undefined;
 }
@@ -209,34 +278,39 @@ function setsTarget(options: unknown, extraArgs: unknown[]): string | undefined 
  * aliases (kubernetes.io/docs/reference/kubectl/kuberc/). If the ones this
  * command uses set the context, namespace or server, cloudpin cannot be sure
  * of the target, so it says so (and the command is stopped). Aliases cannot
- * reuse a built-in command name. Returns the problem, or undefined.
+ * reuse a built-in command name. Returns the problem, or, for an alias, the
+ * command it runs (its `command` field's first word), whose letters the user's
+ * short flags follow.
  */
-function kubercProblem(args: string[], env: NodeJS.ProcessEnv): string | undefined {
-  if (env.KUBERC === "off" || env.KUBECTL_KUBERC === "false") return undefined;
+function readKuberc(args: string[], env: NodeJS.ProcessEnv): { problem?: string; aliasOf?: string } {
+  if (env.KUBERC === "off" || env.KUBECTL_KUBERC === "false") return {};
   const path = flag(args, ["--kuberc"]) ?? str(env.KUBERC) ?? join(home(env), ".kube", "kuberc");
-  if (!existsSync(path)) return undefined;
+  if (!existsSync(path)) return {};
   let doc: unknown;
   try {
     doc = parse(readFileSync(path, "utf8"), { schema: "failsafe" });
   } catch {
-    return `kuberc ${path} is not valid YAML`;
+    return { problem: `kuberc ${path} is not valid YAML` };
   }
   const [command] = commandWords(args);
-  if (!command) return undefined;
+  if (!command) return {};
   const top = map(doc);
   for (const entry of Array.isArray(top.defaults) ? top.defaults : []) {
     const forCommand = (str(map(entry).command) ?? str(map(entry).name))?.split(/\s+/)[0];
-    const option = forCommand === command ? setsTarget(map(entry).options, []) : undefined;
-    if (option) return `kuberc ${path} sets "${option}" for "${command}"; cloudpin can't tell which cluster or namespace that picks (set KUBERC=off to check without it)`;
+    const option = forCommand === command ? setsTarget(map(entry).options) : undefined;
+    if (option) return { problem: `kuberc ${path} sets "${option}" for "${command}"; cloudpin can't tell which cluster or namespace that picks (set KUBERC=off to check without it)` };
   }
   for (const entry of Array.isArray(top.aliases) ? top.aliases : []) {
     const e = map(entry);
     if (str(e.name) !== command) continue;
-    const extra = [...(Array.isArray(e.prependArgs) ? e.prependArgs : []), ...(Array.isArray(e.appendArgs) ? e.appendArgs : [])];
-    const option = setsTarget(e.options, extra);
-    if (option) return `kuberc ${path} alias "${command}" sets "${option}"; cloudpin can't tell which cluster or namespace that picks`;
+    // `command` is the built-in command the alias runs, subcommands included ("create role").
+    const aliasOf = str(e.command)?.trim().split(/\s+/)[0];
+    const option = setsTarget(e.options) ?? aliasArgsTarget(aliasOf, words(e.prependArgs), words(e.appendArgs));
+    if (typeof option === "object") return { problem: `kuberc ${path} alias "${command}": ${option.error}` };
+    if (option) return { problem: `kuberc ${path} alias "${command}" sets "${option}"; cloudpin can't tell which cluster or namespace that picks` };
+    return { aliasOf };
   }
-  return undefined;
+  return {};
 }
 
 function allNamespaces(args: string[]): boolean {
@@ -292,18 +366,21 @@ export const kubernetes: ProviderDef<"kubernetes"> = {
   },
 
   isExempt(args, bin) {
-    if (hasBareFlag(args, ["--help", "-h"])) return true;
     const [first] = commandWords(args);
+    if (hasPflagHelp(args, ["--help", "-h"]) && helpStops(args, bin, first)) return true;
     if (first === undefined) return hasBareFlag(args, ["--version"]);
     return (bin === "helm" ? HELM_EXEMPT : KUBECTL_EXEMPT).has(first);
   },
 
   async resolve({ args, env, bin }) {
+    let aliasOf: string | undefined;
     if (bin !== "helm") {
-      const problem = kubercProblem(args, env);
-      if (problem) return { kind: "error", message: problem };
+      const kuberc = readKuberc(args, env);
+      if (kuberc.problem) return { kind: "error", message: kuberc.problem };
+      aliasOf = kuberc.aliasOf;
     }
-    const split = splitShortGroups(args, bin);
+    // An alias runs a copy of its command, flags included (kubectl pkg/kuberc applyAliases).
+    const split = splitShortGroups(args, bin, aliasOf ?? commandWords(args)[0]);
     if (!Array.isArray(split)) return { kind: "error", message: split.error };
     args = split;
     const sel = selectors(bin, args, env);

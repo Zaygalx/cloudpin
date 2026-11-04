@@ -10,6 +10,8 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 
 ### Added
 
+- [THREAT_MODEL.md](THREAT_MODEL.md) (#84): what cloudpin protects against, what it trusts, the code behind each control,
+  and what it deliberately doesn't try to stop.
 - A standalone `cloudpin.exe` for 64-bit Windows (#96), in each GitHub Release as `cloudpin-X.Y.Z-win-x64.zip`
   (listed in `SHA256SUMS` and covered by the signed attestation): a Node.js single executable application with
   cloudpin and its two dependencies inside, built with the exact Node.js 26 pinned in `scripts/exe-node-version.txt`,
@@ -52,6 +54,17 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 - Short flags joined with `=` (for example, `wrangler deploy -e=production`) were ignored by the shared
   argument reader, so cloudpin could resolve the account without the requested environment (#118). It now
   reads the joined form only for the CLIs that accept it, starting with Wrangler.
+- Vercel: `-y` inside a short group (`vercel project inspect -dy`) asks on a protected environment, since it can create
+  and link a project, and `vercel teams change` and the `team` alias are exempt like `teams switch` (#148).
+- Help no longer exempts a command that runs anyway (#153): a kubectl or helm plugin given `--help` (it gets the flag
+  as an argument), a value flag that takes it (`gh secret set X --body --help`), and Wrangler's `--help false` and
+  `--no-help`. `gh ... --web --help` is checked as well, at the cost of one check.
+- Vercel: `vercel deploy <dir>`, a bare `vercel <dir>`, `vercel pull <dir>` and `vercel dev <dir>` are checked against
+  the link of the folder they name, not the one they run in (#147). A folder known only when the command runs
+  (`vercel deploy "$D"`) stops as "can't tell".
+- kubectl: a kuberc alias whose arguments hold a short flag group (`-itnprod`, `-iA`, `-is <url>`) is read as the
+  group it is, and a short flag's value is the next word whole, so `kubectl logs pod -c -n x` is not namespace x. The
+  user's own short flags after an alias follow the alias command's letters (#140).
 - Wrangler auth profiles (#103): a command run with `--profile`, or in a folder bound by `wrangler auth activate`,
   is checked against that profile's login and its own account cache, not the default one. When nothing else names
   the account and Wrangler can't be asked about the profile (a `--profile` the folder isn't bound to, with no API

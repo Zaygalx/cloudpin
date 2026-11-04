@@ -2,6 +2,12 @@ import { DYNAMIC_WORD, DYNAMIC_WORDS } from "./types.js";
 
 const CANT_TELL = "so cloudpin can't tell which account this command would use";
 
+/** Why, when an argument known only when the command runs names the folder whose link picks the account (#147). */
+export const DYNAMIC_FOLDER = {
+  problem: `the folder this command acts on is only known when the command runs ($(...), backticks or a variable not set earlier in the line), ${CANT_TELL}`,
+  fix: "give the folder a literal value, or run the command yourself",
+};
+
 /**
  * Why cloudpin can't tell the account when an argument is known only when the command runs (#160), or
  * undefined when none could pick it. Each reason names a flag, never a value:
@@ -9,7 +15,8 @@ const CANT_TELL = "so cloudpin can't tell which account this command would use";
  * - a flag name completed at run time (`"--sub$(...)"`);
  * - an unquoted variable, or "$@", that bash may split into several words, flags included; also the words
  *   xargs adds, and a call behind a wrapper flag or a command string cloudpin can't read (#162).
- * A `$(...)` or quoted value anywhere else is a value cloudpin doesn't need. Words after "--" are operands.
+ * A `$(...)` or quoted value anywhere else is a value cloudpin doesn't need, unless a provider reads a
+ * folder from it (DYNAMIC_FOLDER). Words after "--" are operands.
  */
 export function dynamicTarget(args: readonly string[], targetFlags: readonly string[]): { problem: string; fix: string } | undefined {
   const value = (flag: string) => ({

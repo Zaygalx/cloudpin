@@ -152,6 +152,28 @@ function configAccount(path: string, envName: string | undefined): { account?: s
   return { account: ids.top, where };
 }
 
+/**
+ * Whether yargs turns help on (#153). Wrangler declares `.help("help").alias("h", "help")`, a boolean
+ * (packages/wrangler/src/index.ts). yargs-parser 21.1.1 (yargs 17.7.2) takes a "true" or "false" right
+ * after a boolean flag as its value, reads `--no-help` as off, and keeps the last one. Any other way
+ * of writing it (`--help=true`, `-xh`) counts as off here: the command is then checked, the safe side.
+ */
+function yargsHelp(args: string[]): boolean {
+  let on = false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--") break;
+    if (arg === "--help" || arg === "-h") {
+      const next = args[i + 1];
+      on = next !== "false";
+      if (next === "true" || next === "false") i++;
+    } else if (/^--(no-)?h(elp)?(=|$)/.test(arg) || /^-[^-=]*h/.test(arg)) {
+      on = false;
+    }
+  }
+  return on;
+}
+
 /** The project-local account cache Wrangler writes after picking an account (config-cache.ts). */
 function cachedAccount(start: string, env: NodeJS.ProcessEnv, file: string): { id: string; name?: string } | undefined {
   // Wrangler chooses one folder (workers-utils config-cache.ts getCacheFolder)
@@ -203,7 +225,7 @@ export const cloudflare: ProviderDef<"cloudflare"> = {
   },
 
   isExempt(args) {
-    if (hasBareFlag(args, ["--help", "-h"])) return true;
+    if (yargsHelp(args)) return true;
     const words = commandWords(args, VALUE_FLAGS);
     // Wrangler prints its version only when no command is given (packages/wrangler/src/index.ts,
     // the default "*" command); every command accepts -v and ignores it (#146).
