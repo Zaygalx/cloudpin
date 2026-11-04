@@ -20,8 +20,9 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   accounts in one go, after one confirmation; an agent's attempt asks you first.
 - **VS Code / Cursor status bar** ([#18](https://github.com/paureis/cloudpin/issues/18)): a green or red pin
   showing whether the active accounts match the project.
-- **winget** ([#96](https://github.com/paureis/cloudpin/issues/96)): winget only accepts an `.exe`, so this needs a
-  standalone cloudpin (a Node single executable). Moved from 1.2.0 on 2026-10-17.
+- **winget** ([#96](https://github.com/paureis/cloudpin/issues/96)): done. A standalone `cloudpin.exe` in each release,
+  because winget only accepts an `.exe`, and manifests for `paureis.cloudpin`. Submitting the first version to winget-pkgs
+  is the maintainer's step after the release.
 - **Wrangler auth profiles** ([#103](https://github.com/paureis/cloudpin/issues/103)): done. A command run with
   `--profile`, or in a folder bound by `wrangler auth activate`, is checked against that profile's login.
 - **Antigravity and Copilot CLI hook shells on Windows** ([#110](https://github.com/paureis/cloudpin/issues/110)):

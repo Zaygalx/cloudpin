@@ -10,6 +10,14 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 
 ### Added
 
+- A standalone `cloudpin.exe` for 64-bit Windows (#96), in each GitHub Release as `cloudpin-X.Y.Z-win-x64.zip`
+  (listed in `SHA256SUMS` and covered by the signed attestation): a Node.js single executable application with
+  cloudpin and its two dependencies inside, built with the exact Node.js 26 pinned in `scripts/exe-node-version.txt`,
+  so it needs no Node.js installed. It names its own upgrade: `winget upgrade paureis.cloudpin` when winget installed
+  it, otherwise to download the latest zip. Nightly opens an issue when a newer Node.js 26 security release appears.
+- winget manifests for `paureis.cloudpin` (#96) in `packaging/winget/`: a portable zip installing `cloudpin.exe` as
+  the `cloudpin` command. `node scripts/bump-installers.mjs X.Y.Z --winget <dir>` renders them for a release, after
+  checking the exe zip against `SHA256SUMS`, and `docs/winget.md` lists the maintainer's steps to submit them.
 - MCP: a third read-only tool, `cloudpin_doctor` (#112): the same report as `cloudpin doctor --json` (cloudpin on
   PATH, shell wrappers, agent hooks, on Windows the PowerShell execution policy, the pin file and each CLI's account,
   each with its fix), so an agent can tell you why cloudpin isn't guarding. Account IDs are shortened, and it skips
