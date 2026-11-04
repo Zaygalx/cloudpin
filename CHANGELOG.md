@@ -10,6 +10,8 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 
 ### Added
 
+- [THREAT_MODEL.md](THREAT_MODEL.md) (#84): what cloudpin protects against, what it trusts, the code behind each control,
+  and what it deliberately doesn't try to stop.
 - A standalone `cloudpin.exe` for 64-bit Windows (#96), in each GitHub Release as `cloudpin-X.Y.Z-win-x64.zip`
   (listed in `SHA256SUMS` and covered by the signed attestation): a Node.js single executable application with
   cloudpin and its two dependencies inside, built with the exact Node.js 26 pinned in `scripts/exe-node-version.txt`,
