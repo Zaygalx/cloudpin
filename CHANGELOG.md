@@ -14,6 +14,8 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
   PATH, shell wrappers, agent hooks, on Windows the PowerShell execution policy, the pin file and each CLI's account,
   each with its fix), so an agent can tell you why cloudpin isn't guarding. Account IDs are shortened, and it skips
   the identity cache check, which writes a file.
+- Docs: [Guard a Claude Agent SDK app](docs/agent-sdk.md) (#142). An app that loads project settings needs no code;
+  for one that loads none, there is a Python and a TypeScript `PreToolUse` callback that denies on every error.
 
 ### Security
 

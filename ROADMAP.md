@@ -40,6 +40,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   variable whose value cloudpin can't know blocks, and Windows reads variable names without regard to case.
 - **Explain masks credentials** ([#134](https://github.com/paureis/cloudpin/issues/134)): done. `cloudpin explain`
   and the MCP check tool mask tokens and passwords from the command line.
+- **Claude Agent SDK page** ([#142](https://github.com/paureis/cloudpin/issues/142)): done. How to guard an app
+  built with the Agent SDK, in docs/agent-sdk.md.
 - **Windows case gaps** ([#136](https://github.com/paureis/cloudpin/issues/136)): done. cloudpin's own variables
   and the read-only check read names without regard to case (Wrangler's per-platform login folder came with #103).
 

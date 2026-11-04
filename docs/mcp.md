@@ -87,4 +87,5 @@ instructions tell the agent so.
 MCP gives an agent advice: nothing stops it from running a command without checking. Codex, Cursor and Gemini CLI can
 also take the blocking hook (`cloudpin install-hook <agent>`, see
 [Protect your AI agent](../README.md#protect-your-ai-agent)). cloudpin has no hook for VS Code, Windsurf or Claude
-Desktop, so there the MCP server is advice only.
+Desktop, so there the MCP server is advice only. An agent built with the Claude Agent SDK can take the blocking hook
+too: see [Guard a Claude Agent SDK app](agent-sdk.md).

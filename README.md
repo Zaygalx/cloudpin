@@ -316,7 +316,7 @@ older than 2.1.47.
 
 ### Claude Code plugin
 
-One install gives Claude Code the hook, two read-only tools it can call before acting, and a short skill telling it to
+One install gives Claude Code the hook, three read-only tools it can call before acting, and a short skill telling it to
 check first and to stop and ask you when cloudpin blocks a command. cloudpin itself must be installed first:
 
 ```sh
@@ -335,6 +335,8 @@ and why cloudpin may not be guarding. None runs, switches or changes anything: a
 could switch to the wrong one.
 [docs/mcp.md](docs/mcp.md) adds it to Codex, Cursor, VS Code and more. It gives advice, not enforcement: where the
 agent has a hook, install that too.
+
+Building your own agent with the Claude Agent SDK? [docs/agent-sdk.md](docs/agent-sdk.md) shows how to guard it.
 
 ## Configuration
 
