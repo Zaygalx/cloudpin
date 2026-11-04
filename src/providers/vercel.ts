@@ -15,7 +15,11 @@ import { HELP_COMMANDS, linkDirs, mainParse, splitShortGroups } from "./vercel-a
 // A command may touch both, so both must be the pinned team.
 
 const EXEMPT_COMMANDS = new Set(["login", "logout", "switch", "whoami", "help", "telemetry"]);
-const EXEMPT_TEAMS_SUBCOMMANDS = new Set(["ls", "list", "switch"]);
+// vercel 50.35 src/commands/teams/index.ts COMMAND_CONFIG: list = ls|list, switch = switch|change
+// (add = create|add and invite change things). teamsCommand's aliases are switch and team; the
+// subcommand is the word after the one typed (`switch` itself runs teams switch).
+const TEAMS_COMMANDS = new Set(["teams", "team"]);
+const EXEMPT_TEAMS_SUBCOMMANDS = new Set(["ls", "list", "switch", "change"]);
 
 export interface Team {
   id: string;
@@ -190,7 +194,7 @@ export const vercel: ProviderDef<"vercel"> = {
     if (!command) return parsed.flags.has("--version") || parsed.flags.has("--help");
     // A flag here (`--prod --name whoami`) is a deploy, which is in no list below.
     if (EXEMPT_COMMANDS.has(command)) return true;
-    if (command === "teams" && sub !== undefined && EXEMPT_TEAMS_SUBCOMMANDS.has(sub)) return true;
+    if (TEAMS_COMMANDS.has(command) && sub !== undefined && EXEMPT_TEAMS_SUBCOMMANDS.has(sub)) return true;
     return parsed.flags.has("--help") && HELP_COMMANDS.has(command);
   },
 

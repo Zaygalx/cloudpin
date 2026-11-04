@@ -1,6 +1,7 @@
 // How the Vercel CLI parses its arguments, read by vercel.ts (#147 moved this here).
 import { lstatSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
+import { hasAnyFlag } from "../args.js";
 import { isDynamic } from "../word-expansion.js";
 
 // Global options (vercel/vercel packages/cli/src/util/arg-common.ts globalCommandOptions; 50.35).
@@ -128,6 +129,16 @@ export function splitShortGroups(args: string[]): string[] {
   }
   return out;
 }
+
+/**
+ * Whether the command may get --yes (#148), as `project inspect` reads it (vercel 50.35):
+ * project's main parses permissively (src/commands/project/index.ts), so a group's -y it
+ * doesn't know stays a word and a first "--" is dropped; inspect parses those words again with
+ * --yes/-y (src/commands/project/inspect.ts, yesOption), and arg sets a boolean on `--yes=x`
+ * too. So every word counts, groups after "--" included; a value never starts with "-".
+ */
+export const passesYes = (args: string[]) =>
+  hasAnyFlag(splitShortGroups(args.filter((word) => word !== "--")), ["--yes", "-y"]);
 
 const isDirectory = (path: string) => {
   try {

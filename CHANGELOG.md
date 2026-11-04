@@ -49,6 +49,8 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 
 ### Fixed
 
+- Vercel: `-y` inside a short group (`vercel project inspect -dy`) asks on a protected environment, since it can create
+  and link a project, and `vercel teams change` and the `team` alias are exempt like `teams switch` (#148).
 - Help no longer exempts a command that runs anyway (#153): a kubectl or helm plugin given `--help` (it gets the flag
   as an argument), a value flag that takes it (`gh secret set X --body --help`), and Wrangler's `--help false` and
   `--no-help`. `gh ... --web --help` is checked as well, at the cost of one check.

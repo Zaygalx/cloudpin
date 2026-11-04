@@ -1,11 +1,12 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { commandWords as argWords, hasAnyFlag, leadingWords } from "./args.js";
+import { commandWords as argWords, leadingWords } from "./args.js";
 import type { Provider, ReadOnlyRules } from "./config.js";
 import { home } from "./paths.js";
 import { commandWords } from "./providers/kubernetes.js";
 import { VALUE_FLAGS as SUPABASE_VALUE_FLAGS } from "./providers/supabase.js";
 import { VALUE_FLAGS as WRANGLER_VALUE_FLAGS } from "./providers/cloudflare.js";
+import { passesYes } from "./providers/vercel-args.js";
 
 /*
  * Which commands only read, so they skip the confirmation on a protected
@@ -64,9 +65,11 @@ const BUILT_IN: Record<
   },
 
   // Vercel CLI: bare `vercel <path>` deploys, `vercel alias` with no subcommand
-  // creates an alias, and `--yes` can set up a project (vercel.com/docs/cli).
+  // creates an alias, and `--yes` can set up a project (vercel.com/docs/cli). Of
+  // this list only `project inspect` with no name uses --yes (ensureLink), read
+  // also inside a short group (#148); the others never call ensureLink (50.35).
   vercel: (words, args) => {
-    if (hasAnyFlag(args, ["--yes", "-y"])) return false;
+    if (passesYes(args)) return false;
     const [first, second] = words;
     if (["ls", "list", "inspect", "logs"].includes(first ?? "")) return true;
     if (["env", "domains", "dns", "certs", "project", "projects", "teams", "alias"].includes(first ?? "")) {

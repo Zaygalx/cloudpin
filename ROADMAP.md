@@ -49,6 +49,7 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   `pull <dir>` and `dev <dir>` are checked against the link of the folder they name.
 - **Exemption leftovers** ([#153](https://github.com/paureis/cloudpin/issues/153)): plugins given `--help`, value flags
   that take it and Wrangler's `--no-help` are done; kubectl per-command long values and `vercel dev` services remain.
+- **Vercel `-y` in a group and `teams change`** ([#148](https://github.com/paureis/cloudpin/issues/148)): done.
 - **Windows case gaps** ([#136](https://github.com/paureis/cloudpin/issues/136)): done. cloudpin's own variables
   and the read-only check read names without regard to case (Wrangler's per-platform login folder came with #103).
 
