@@ -16,7 +16,7 @@ const GLOBAL_VALUE_FLAGS = new Set([
 // reaches gcloud unchanged.
 const IDENTITY_FLAGS = ["--account", "--project", "--configuration"];
 // Labels on an identity that isn't the active account (#165).
-const IMPERSONATED = "impersonated";
+export const IMPERSONATED = "impersonated";
 const ACCESS_TOKEN = "access token";
 
 type Auth = { impersonate_service_account?: string; access_token_file?: string; credential_file_override?: string };

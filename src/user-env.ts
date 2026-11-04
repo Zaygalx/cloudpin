@@ -4,7 +4,7 @@ import type { Invocation } from "./shellwords.js";
  * Variables only the user may set. Set before starting the agent, they count; set by the agent inside its own command,
  * they would let it pick a laxer environment, confirm for the user or skip the check, so they are ignored there.
  */
-export const USER_ONLY_VARS = ["CLOUDPIN_ENV", "CLOUDPIN_BRANCH", "CLOUDPIN_CONFIRM", "CLOUDPIN_SKIP"];
+export const USER_ONLY_VARS = ["CLOUDPIN_ENV", "CLOUDPIN_BRANCH", "CLOUDPIN_CONFIRM", "CLOUDPIN_SKIP", "CLOUDPIN_ENV_FILE"];
 
 // What a call started by `env -i` still has (#162): PATH, so cloudpin can find the CLI to ask it who it acts as
 // (the call itself searches the system's default path), and the variables Git Bash gives every Windows

@@ -19,14 +19,20 @@ Examples of what counts as a security problem here:
   `vercel teams ls`, `gh api user`, `supabase projects list`, `wrangler whoami --json`) with the same flags and
   environment as your command, and reads the result. For Kubernetes, Supabase and Wrangler it also reads project
   files that name the target (the kubeconfig, `supabase/.temp/`, the Wrangler config and its account cache).
-- It never logs in, logs out or switches accounts, and never uses or stores a token or key. Credential files are not
-  read, with two exceptions: the kubeconfig, which can hold credentials next to the cluster list (cloudpin takes only
-  the server and namespace from it), and the project's `.env` files that Wrangler loads, which can hold
-  `CLOUDFLARE_API_TOKEN` (cloudpin reads the account variables from them, and keys its cache on a salted hash of the
-  credential variables; it never prints, logs or stores their values). For Vercel it checks whether a login file exists, without reading it.
+- It never logs in or logs out, and never uses or stores a token or key. It switches accounts only when you run
+  `cloudpin switch`, which shows the plan and asks first unless you pass `--yes` (an agent's attempt asks you through
+  its hook); it then runs each CLI's own switch command (`az account set`, `gh auth switch`, `vercel teams switch`,
+  `gcloud config set`, `kubectl config use-context`) without a shell, and only prints a login or `supabase link` for
+  you to run. Credential files are not read, with three exceptions: the kubeconfig, which can hold credentials next to
+  the cluster list (cloudpin takes only the server and namespace from it, and for `cloudpin switch` each context's
+  name and cluster); the project's `.env` files that Wrangler loads, which can hold `CLOUDFLARE_API_TOKEN` (cloudpin
+  reads the account variables from them, and keys its cache on a salted hash of the credential variables; it never
+  prints, logs or stores their values); and, for `cloudpin switch`, the AWS config file, from which it takes only
+  profile names, `sso_account_id` and `role_arn`, skipping every other line (the AWS credentials file is never read).
+  For Vercel it checks whether a login file exists, without reading it.
 - It stores successful identity answers for up to five minutes in a cache file in your user cache folder. Keys are
   salted hashes, so tokens and command arguments are never written in clear.
-- `cloudpin mcp`, the MCP server for agents, is read-only: its two tools report status and what cloudpin would decide
+- `cloudpin mcp`, the MCP server for agents, is read-only: its three tools report status, what cloudpin would decide and why it may not be guarding
   for a command; they never run that command, log in, switch accounts or write anything.
 - It has no telemetry and sends nothing about you or your accounts. Its one request of its own asks
   registry.npmjs.org for the latest cloudpin version (public data; the request names only the package), at most once

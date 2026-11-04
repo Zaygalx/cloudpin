@@ -1,7 +1,7 @@
 import type { ActiveEnvironment } from "./config.js";
 import { maskArgv } from "./format.js";
 import { commandName, guard, type GuardDeps, type Trace, type Verdict } from "./guard.js";
-import { AGENTS, type AgentName } from "./hooks/agents.js";
+import { AGENTS, type AgentName, cloudpinConfirmation } from "./hooks/agents.js";
 import { home } from "./paths.js";
 import { type Dialect, findInvocations, type Invocation } from "./shellwords.js";
 import { envFor } from "./user-env.js";
@@ -108,6 +108,9 @@ export async function explain(command: string | string[], opts: ExplainOptions, 
   const out: ExplainedCall[] = [];
   for (let call of calls) {
     if (commandName(call.bin) === "cloudpin") {
+      // `cloudpin switch` and `use` need an agent's user's OK, as in the hook (#14); in a terminal they ask or show.
+      const asked = opts.mode === "agent" ? cloudpinConfirmation(call, deps, call.cwd ?? opts.cwd, opts.env) : undefined;
+      if (asked) out.push({ argv: maskArgv([call.bin, ...call.args]), cwd: call.cwd ?? opts.cwd, envNames: Object.keys(call.env), cli: null, verdict: "ask", reason: asked.ask });
       // As the agent hook does: `cloudpin exec -- <cmd>` is checked as <cmd>.
       if (call.args[0] !== "exec") continue;
       const wrapped = call.args.slice(call.args[1] === "--" ? 2 : 1);

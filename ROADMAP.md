@@ -16,8 +16,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
 
 ## 1.3.0: Fix it, see it (release 2026-12-03)
 
-- **`cloudpin switch`** ([#14](https://github.com/paureis/cloudpin/issues/14)): move every CLI to the pinned
-  accounts in one go, after one confirmation.
+- **`cloudpin switch`** ([#14](https://github.com/paureis/cloudpin/issues/14)): done. Moves every CLI to the pinned
+  accounts in one go, after one confirmation; an agent's attempt asks you first.
 - **VS Code / Cursor status bar** ([#18](https://github.com/paureis/cloudpin/issues/18)): a green or red pin
   showing whether the active accounts match the project.
 - **winget** ([#96](https://github.com/paureis/cloudpin/issues/96)): winget only accepts an `.exe`, so this needs a

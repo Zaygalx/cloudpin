@@ -103,7 +103,7 @@ function splitShortGroups(args: string[]): string[] {
   return out;
 }
 
-interface Team {
+export interface Team {
   id: string;
   slug: string;
   current?: boolean;
@@ -142,7 +142,7 @@ const nonEmpty = (v: unknown): v is string => typeof v === "string" && v !== "";
  * (read up to vercel 50; later versions refuse it and exit). A file Vercel would fail on, or
  * that cloudpin cannot read, is an error: the command's team can't be told.
  */
-function localScope(cwd: string, file: string | undefined): string | undefined | { error: string } {
+export function localScope(cwd: string, file: string | undefined): string | undefined | { error: string } {
   const paths = file !== undefined ? [resolvePath(cwd, file)] : [join(cwd, "vercel.json"), join(cwd, "now.json")];
   const found: unknown[] = [];
   for (const path of paths) {
@@ -221,7 +221,7 @@ const MAX_TEAM_PAGES = 25;
  * marked current may be on any of them, and missing it would wrongly mean the
  * Hobby team. Pages that never end, or repeat, fail closed.
  */
-async function listTeams(exec: Exec, common: string[], env: NodeJS.ProcessEnv): Promise<Team[] | Resolution> {
+export async function listTeams(exec: Exec, common: string[], env: NodeJS.ProcessEnv): Promise<Team[] | Resolution> {
   const teams: Team[] = [];
   let next: number | undefined;
   for (let page = 0; page < MAX_TEAM_PAGES; page++) {

@@ -1,5 +1,5 @@
 import { ConfigError, type FoundConfig, PROVIDERS } from "./config.js";
-import { guard, type GuardDeps, installed } from "./guard.js";
+import { guard, type GuardDeps, installed, type Trace } from "./guard.js";
 
 /** One pinned provider's outcome. */
 export type CheckStatus = "match" | "mismatch" | "not-logged-in" | "unknown" | "not-installed" | "unsupported";
@@ -38,7 +38,11 @@ export async function runCheck(
   cwd: string,
   env: NodeJS.ProcessEnv,
   deps: GuardDeps,
-  opts: { only?: string[] } = {},
+  opts: {
+    only?: string[];
+    /** Filled with what guard found per provider (its resolution), for `cloudpin switch`. */
+    traces?: Map<string, Trace>;
+  } = {},
 ): Promise<CheckReport> {
   let only: string[] | undefined;
   const strict = () => (only ? { only } : {});
@@ -95,7 +99,9 @@ export async function runCheck(
       continue;
     }
     // "agent" mode so CLOUDPIN_SKIP cannot make a check report success.
-    const verdict = await guard({ bin, args: [], env, cwd, mode: "agent" }, deps);
+    const trace: Trace = {};
+    opts.traces?.set(name, trace);
+    const verdict = await guard({ bin, args: [], env, cwd, mode: "agent" }, deps, trace);
     if (verdict.action === "allow" && verdict.reason === "not-installed") {
       providers.push({ provider: name, status: "not-installed", problems: [notInstalled(bin)] });
     } else if (verdict.action === "allow" || verdict.action === "confirm") {

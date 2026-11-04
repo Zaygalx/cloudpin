@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { commandName } from "./guard.js";
+import type { Invocation } from "./invocation.js";
 import { tokenizePowerShell, windowsPowerShellArgv } from "./ps-tokens.js";
 import { pipedValues, psAssignment, psVariables } from "./ps-words.js";
 import { type Arg, type Run, runner } from "./runners.js";
@@ -9,25 +10,7 @@ import { DYNAMIC_WORD, DYNAMIC_WORDS, UNKNOWN_VALUE } from "./types.js";
 import { expandWord, isDynamic, substitute, type Variables } from "./word-expansion.js";
 import { forCall, unwrap, wrappedWords } from "./wrappers.js";
 
-export interface Invocation {
-  /** Executable as written, e.g. "gh" or "/usr/bin/gh". */
-  bin: string;
-  args: string[];
-  /**
-   * Variables the CLI receives from the line: exported earlier in it (`export X=1;`,
-   * PowerShell `$env:X = 1`) or assigned before the command (`X=1 cli`) (#86).
-   */
-  env: Record<string, string>;
-  /** Plain `X=1;` assignments earlier in the line: they reach the CLI only if X is already exported. */
-  ifExported?: Record<string, string>;
-  /** Names `unset` earlier in the line. */
-  unset?: string[];
-  /** Folder the call runs in, when a `cd` earlier in the line changed it. */
-  cwd?: string;
-  /** The call starts with an empty environment (`env -i`, `exec -c`): only `env` reaches the CLI (#162). */
-  clearEnv?: boolean;
-}
-
+export type { Invocation };
 export { UNKNOWN_VALUE };
 
 /** The shell that reads the line: bash (also sh, zsh, Git Bash) or PowerShell (5.1 or 7) (#159). */
@@ -225,10 +208,18 @@ function analyse(
     bin = expanded[0]!;
     name = commandName(bin);
     if (state.guarded.has(name)) {
-      out.push(invocation(bin, expanded.slice(1), env, state));
+      const call = (argv: string[]) => {
+        // `cloudpin exec` checks in shell mode, where CLOUDPIN_SKIP works, and starts its command without a shell,
+        // so that command is read as the words it is: a CLI, `npx` or `bash -c` around one, `cloudpin switch` (#14).
+        if (name === "cloudpin" && argv[0] === "exec") {
+          const run = argv.slice(argv[1] === "--" ? 2 : 1);
+          analyse(run, stdin, out, { ...child(state), exported: { ...state.exported, ...env }, dialect: "bash" }, [], run.map(isDynamic));
+        } else out.push(invocation(bin, argv, env, state));
+      };
+      call(expanded.slice(1));
       // Windows PowerShell 5.1 passes quotes inside an argument unescaped, and the CLI splits it again (#159).
       const legacy = state.dialect === "powershell" ? windowsPowerShellArgv(expanded.slice(1)) : [];
-      if (state.dialect === "powershell" && JSON.stringify(legacy) !== JSON.stringify(expanded.slice(1))) out.push(invocation(bin, legacy, env, state));
+      if (state.dialect === "powershell" && JSON.stringify(legacy) !== JSON.stringify(expanded.slice(1))) call(legacy);
       return;
     }
     // eval, shells, find and script blocks get the words as typed, which the code they run expands;

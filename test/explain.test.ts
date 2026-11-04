@@ -64,7 +64,7 @@ describe("explain", () => {
 
   it("blocks a command whose own flags pick another account, with the reason and the fix", async () => {
     const [call] = await run(["vercel", "deploy", "--scope", "team_other"]);
-    expect(call).toMatchObject({ verdict: "block", identity: { team: "team_other" }, source: "--scope", fix: "vercel switch team_acme" });
+    expect(call).toMatchObject({ verdict: "block", identity: { team: "team_other" }, source: "--scope", fix: "vercel switch team_acme (or run cloudpin switch)" });
     expect(call!.problems).toEqual(['team: pinned "team_acme", the command would use "team_other"']);
   });
 

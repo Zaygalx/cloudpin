@@ -105,6 +105,11 @@ cloudpin check
 # mismatch, unpinned or error) and each cloud's status, reason and fix. Exit codes stay the same.
 cloudpin check --only azure,aws [--json]
 
+# Switch each pinned CLI to its pinned account: shows the plan, asks once (--yes: don't ask), runs the CLIs' own switch
+# commands, then checks again; exit 1 unless everything matches. What it won't do (a login, supabase link, a Wrangler
+# config edit, an overriding variable) it names for you. --json: the plan, what ran and the check after.
+cloudpin switch [--yes] [--json] [--only <clouds>]
+
 # See each CLI's active account, what this folder pins, and which agent hooks are installed (--json for tools)
 cloudpin status
 
@@ -196,7 +201,8 @@ would ask or fail, so cloudpin stops the command, as for a profile it can't ask 
 account unchecked. Built to Wrangler's source and docs, not yet run against a real Cloudflare login; reports welcome.
 
 - **Match:** the command runs as if cloudpin wasn't there.
-- **Mismatch:** the command is stopped, and you're told which account is active and how to switch.
+- **Mismatch:** the command is stopped, and you're told which account is active and how to switch (or to run
+  `cloudpin switch`).
 - **Can't tell** (an expired login, a broken token, no network): the command is stopped too, and cloudpin says so
   plainly, with the CLI's own reason and the command that shows what's wrong.
 
@@ -270,6 +276,10 @@ cloudpin shell-init pwsh | Out-String | Invoke-Expression   # $PROFILE
 If cloudpin is ever uninstalled, the functions fall back to the real CLI, so they never get in your way. To run one
 command anyway, on purpose: `CLOUDPIN_SKIP=1 <command>`.
 
+The line also defines a `cloudpin` function, so `cloudpin switch` can set `AWS_PROFILE` in your shell (AWS has no
+"switch" command; the account follows the profile). It applies only an `AWS_PROFILE=<name>` line from a temporary file
+(never running anything in it). Without the line, `cloudpin switch` prints the `export` for you to run.
+
 **Aliases.** An alias that calls the CLI itself, such as `alias kubectl='kubectl --context dev'`, is still guarded.
 An alias that runs another program, such as `alias kubectl=kubecolor` or `alias gh='command gh'`, bypasses cloudpin,
 so each new shell prints a warning naming it (bash 4+, zsh and PowerShell; PowerShell runs any alias before the
@@ -284,7 +294,8 @@ cloudpin install-hook claude
 The hook goes into the project's agent settings (`--user` for your personal settings). cloudpin shows the file before
 writing it, keeps a backup, and `uninstall-hook` removes only its own entry. When a command is blocked, the agent is
 told why and asked to check with you. Agents can't use `CLOUDPIN_SKIP` or `CLOUDPIN_CONFIRM`, can't pick an
-environment by setting `CLOUDPIN_ENV` in their own command, and need your OK to run `cloudpin use`.
+environment by setting `CLOUDPIN_ENV` in their own command, and need your OK to run `cloudpin use` or
+`cloudpin switch` (with `--yes` too; agents whose hooks can't ask are told to ask you to run it).
 
 | Agent | Settings file | Status |
 |---|---|---|
@@ -362,15 +373,17 @@ switch protection off. The message names your version and says to update in case
 | Exit code | Meaning |
 |---|---|
 | `0` | OK |
-| `1` | Usage error, or `check` found a problem |
+| `1` | Usage error, `check` found a problem, or a CLI is still off its pin after `switch` |
 | `3` | Command blocked, or not confirmed on a protected environment |
 
 ## Security and privacy
 
 cloudpin only reads which account is active, using each CLI's own identity command (`az account show`,
-`aws sts get-caller-identity`, `gcloud config list`, `vercel teams ls`, `gh api user`). It never logs in or
-switches accounts, never reads a credential file other than the kubeconfig (taking only the server and namespace from
-it) and the `.env` files Wrangler loads (taking the account variables), and never prints or stores a token: error messages name a variable
+`aws sts get-caller-identity`, `gcloud config list`, `vercel teams ls`, `gh api user`). It never logs in, and switches
+accounts only when you run `cloudpin switch` (it shows the plan and asks first unless you pass `--yes`; an agent's
+attempt asks you through its hook). It never reads a credential file other than the kubeconfig (taking only the server
+and namespace from it), the `.env` files Wrangler loads (taking the account variables) and, for `cloudpin switch`, the
+AWS config file (only profile names, `sso_account_id` and `role_arn`; never the credentials file), and never prints or stores a token: error messages name a variable
 such as `GH_TOKEN` but never its value, and the cache stores salted hashes of anything sensitive. It runs CLIs
 directly, never through a shell. cloudpin has no telemetry and sends nothing about you or your accounts; the
 identity commands above talk only to their own provider, as they would if you ran them. Its one request of its own

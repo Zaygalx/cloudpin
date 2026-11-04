@@ -113,7 +113,7 @@ function splitShortGroups(args: string[], bin: string | undefined): string[] | {
   return out;
 }
 
-interface Kubeconfig {
+export interface Kubeconfig {
   currentContext?: string;
   contexts: Map<string, { cluster?: string; namespace?: string }>;
   clusters: Map<string, { server?: string }>;
@@ -125,7 +125,7 @@ const str = (v: unknown): string | undefined => (typeof v === "string" && v !== 
 const map = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
 /** Reads and merges the kubeconfig files: the first file to set a value or a named entry wins. */
-function loadKubeconfig(explicit: string | undefined, env: NodeJS.ProcessEnv): Loaded {
+export function loadKubeconfig(explicit: string | undefined, env: NodeJS.ProcessEnv): Loaded {
   let paths: string[];
   if (explicit) {
     // --kubeconfig: only that file, which must exist.
@@ -257,7 +257,7 @@ function withoutUserinfo(server: string): string {
   return server.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, "$1");
 }
 
-function normaliseServer(server: string): string {
+export function normaliseServer(server: string): string {
   try {
     const url = new URL(server);
     // URL lowercases the scheme and host; paths stay case-sensitive.

@@ -9,8 +9,10 @@ const MARKER = "cloudpin hook";
 const command = (agent: AgentName) => `${MARKER} ${agent}`;
 // Cursor runs the hook only for commands matching this regex: as words, every
 // name the hook inspects (each guarded CLI, and cloudpin itself for `cloudpin
-// use`). Built from the providers so a new one can't be left out (#42).
-const CURSOR_MATCHER = `\\b(${[...providers.flatMap((p) => p.bins), "cloudpin"].join("|")})\\b`;
+// use` and `cloudpin switch`). Built from the providers so a new one can't be left out (#42). In any case, as a
+// Windows shell runs `CLOUDPIN.CMD` (#14), and in plain classes: Cursor's docs name no flag syntax.
+const anyCase = (name: string) => name.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`);
+const CURSOR_MATCHER = `\\b(${[...providers.flatMap((p) => p.bins), "cloudpin"].map(anyCase).join("|")})\\b`;
 
 /**
  * SystemRoot, when install-hook may write the Windows form of a hook (#108):
