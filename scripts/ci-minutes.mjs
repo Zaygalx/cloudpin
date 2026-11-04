@@ -12,7 +12,10 @@ const MULTIPLIER = { ubuntu: 1, windows: 2, macos: 10 };
 const api = (path) =>
   JSON.parse(execFileSync("gh", ["api", "--paginate", "--slurp", path], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }));
 
-const pages = api(`repos/${REPO}/actions/runs?per_page=100&created=${month}-01..${month}-31`);
+// The month's real last day: GitHub answers 0 runs, with no error, to a range ending on a date that doesn't exist (11-31).
+const [year, monthNumber] = month.split("-").map(Number);
+const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+const pages = api(`repos/${REPO}/actions/runs?per_page=100&created=${month}-01..${month}-${String(lastDay).padStart(2, "0")}`);
 const runs = pages.flatMap((p) => p.workflow_runs);
 
 const byWorkflow = new Map();
