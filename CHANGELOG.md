@@ -49,6 +49,9 @@ Versions 0.1.0 to 0.4.2 (2026-10-08 to 2026-10-10) are in [docs/changelog-0.x.md
 
 ### Fixed
 
+- kubectl: a kuberc alias whose arguments hold a short flag group (`-itnprod`, `-iA`, `-is <url>`) is read as the
+  group it is, and a short flag's value is the next word whole, so `kubectl logs pod -c -n x` is not namespace x. The
+  user's own short flags after an alias follow the alias command's letters (#140).
 - Wrangler auth profiles (#103): a command run with `--profile`, or in a folder bound by `wrangler auth activate`,
   is checked against that profile's login and its own account cache, not the default one. When nothing else names
   the account and Wrangler can't be asked about the profile (a `--profile` the folder isn't bound to, with no API

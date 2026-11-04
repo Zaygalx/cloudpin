@@ -43,6 +43,8 @@ issues it ships. Open an [issue](https://github.com/paureis/cloudpin/issues) to 
   and the MCP check tool mask tokens and passwords from the command line.
 - **Claude Agent SDK page** ([#142](https://github.com/paureis/cloudpin/issues/142)): done. How to guard an app
   built with the Agent SDK, in docs/agent-sdk.md.
+- **kuberc alias groups** ([#140](https://github.com/paureis/cloudpin/issues/140)): done. A kuberc alias with a short
+  flag group is read as kubectl reads it, and a short flag's value that looks like a flag stays a value.
 - **Windows case gaps** ([#136](https://github.com/paureis/cloudpin/issues/136)): done. cloudpin's own variables
   and the read-only check read names without regard to case (Wrangler's per-platform login folder came with #103).
 
